@@ -2,8 +2,6 @@
 
 **A computational platform for statistical analysis and visualization of evolutionary conservation scores**
 
-TaxoConserv provides researchers with tools for co## Testing
-
 Execute the test suite:
 ```bash
 python -m pytest tests/
@@ -18,7 +16,6 @@ python -m pytest tests/
 - **Sample Data Guide**: [`docs/SAMPLE_DATA_GUIDE.md`](docs/SAMPLE_DATA_GUIDE.md)
 
 ### Technical Documentation
-- **ACMG Analysis**: [`docs/ACMG_ANALYSIS.md`](docs/ACMG_ANALYSIS.md)
 - **Testing Framework**: [`tests/README_TEST_PLAN.md`](tests/README_TEST_PLAN.md)
 - **Performance Considerations**: [`tests/README_PERFORMANCE_SECURITY.md`](tests/README_PERFORMANCE_SECURITY.md)nary analysis through two complementary approaches:
 - **Taxonomic Conservation Analysis**: Statistical comparison of conservation metrics across taxonomic classifications
@@ -202,19 +199,6 @@ TaxoConserv/
 ```bash
 python -m pytest tests/
 ```
-
-## Documentation & Support
-
-### Primary Resources
-- 🌐 **Live Application**: https://taxoconserv.streamlit.app/
-- 📖 **User Guide**: [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)
-- �️ **Web Interface Guide**: [`docs/WEB_INTERFACE_GUIDE.md`](docs/WEB_INTERFACE_GUIDE.md)
-- 🧪 **Sample Data Guide**: [`docs/SAMPLE_DATA_GUIDE.md`](docs/SAMPLE_DATA_GUIDE.md)
-
-### Additional Resources
-- 🧬 **ACMG Analysis Guide**: [`docs/ACMG_ANALYSIS.md`](docs/ACMG_ANALYSIS.md)
-- 🔬 **Testing Documentation**: [`tests/README_TEST_PLAN.md`](tests/README_TEST_PLAN.md)
-- ⚡ **Performance Guide**: [`tests/README_PERFORMANCE_SECURITY.md`](tests/README_PERFORMANCE_SECURITY.md)
 
 ## Citation
 
