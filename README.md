@@ -8,11 +8,6 @@ TaxoConserv provides two analysis modes:
 
 **Web Interface**: https://taxoconserv.streamlit.app/
 
-## Usage
-
-### Web Interface
-Access the application at https://taxoconserv.streamlit.app/
-
 ### Command Line
 For programmatic use:
 ```bash
