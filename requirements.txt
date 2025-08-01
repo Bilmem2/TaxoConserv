@@ -1,0 +1,43 @@
+# TaxoConserv - Taxonomic Conservation Analysis Tool
+# Python >= 3.8
+
+# Core data processing
+pandas>=1.5.0
+numpy>=1.21.0
+
+# Statistical analysis
+scipy>=1.9.0
+
+# Visualization - Core
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# Interactive visualization and web interface
+plotly>=5.15.0
+streamlit>=1.25.0
+
+# Advanced features (optional but recommended)
+scikit-learn>=1.3.0  # For clustering in advanced grouping
+duckdb>=0.8.0        # For performance optimization
+
+# CLI argument parsing (built-in argparse is sufficient)
+# Optional: click>=8.0.0 for advanced CLI features
+
+# Development dependencies (optional)
+pytest>=7.0.0
+pytest-cov>=4.0.0
+black>=22.0.0
+flake8>=5.0.0
+
+# Export and utility packages
+kaleido>=0.2.1       # For static image export from plotly
+openpyxl>=3.1.0      # For Excel file support
+xlsxwriter>=3.1.0    # For advanced Excel formatting
+
+# Type checking (development)
+mypy>=1.5.0
+types-requests>=2.31.0
+
+# Additional statistical packages (optional)
+statsmodels>=0.14.0  # For advanced statistical modeling
+pingouin>=0.5.3      # For additional statistical tests

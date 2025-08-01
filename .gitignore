@@ -1,0 +1,91 @@
+# TaxoConserv .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output files (but keep example outputs)
+output/
+!output/.gitkeep
+!output/example/
+
+# Temporary files
+*.tmp
+*.log
+
+# Test coverage
+.coverage
+htmlcov/
+
+# Jupyter notebooks
+*.ipynb_checkpoints
+
+# Data files (except examples)
+data/*.csv
+data/*.tsv
+!data/example_*.csv
+!data/example_*.tsv
+
+# Test images and plots
+*.png
+*.pdf
+*.html
+test_*.png
+test_*.pdf
+test_*.html
+src/test_*.png
+src/test_*.pdf
+src/test_*.html
+output/*.png
+output/*.pdf
+output/*.html
+*CHANGELOG.md
+
+# Temporary test files
+temp_test_data.csv
+
+# Reports
+*.md
+CONSERVATION_SCORE_INTEGRATION_REPORT.md
+tests/README_*.md
+
+# Pycache (redundant, but explicit for subfolders)
+src/__pycache__/
+tests/__pycache__/
+
+# Docs
+docs/*.md

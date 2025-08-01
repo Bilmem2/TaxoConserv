@@ -1,0 +1,6 @@
+position	phyloP_score	taxon_group	chromosome	gene	species
+1000000	5.2	primate	chr1	GENE1	homo_sapiens
+1000100	3.1	mammal	chr1	GENE1	mus_musculus
+1000200	7.8	primate	chr1	GENE1	pan_troglodytes
+1000300	2.4	vertebrate	chr1	GENE1	danio_rerio
+1000400	6.3	primate	chr1	GENE1	homo_sapiens
