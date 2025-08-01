@@ -1,71 +1,211 @@
 def create_demo_data():
-    """Create sample conservation data for demonstration."""
+    """Create comprehensive sample conservation data for demonstration."""
     import numpy as np
     import pandas as pd
+    
     np.random.seed(42)  # For reproducible results
-    # Main taxon groups
-    mammals_data = np.random.beta(2, 2, 50) * 0.8 + 0.1
-    birds_data = np.random.beta(3, 1.5, 30) * 0.9 + 0.1
-    reptiles_data = np.random.beta(1.5, 3, 30) * 0.7 + 0.1
-    unknown_data = np.random.beta(2, 2, 10) * 0.5 + 0.2
-    misc_data = np.random.beta(2, 2, 10) * 0.5 + 0.2
-    primate_data = np.random.beta(2, 2, 15) * 0.8 + 0.1
-    hominid_data = np.random.beta(2, 2, 10) * 0.8 + 0.1
-    n = 50 + 30 + 30 + 10 + 10 + 15 + 10
-    family = (
-        ['Mammalia'] * 50 + ['Aves'] * 30 + ['Reptilia'] * 30 + ['Unknown'] * 10 + ['Misc'] * 10 + ['Mammalia'] * 15 + ['Mammalia'] * 10
-    )
-    genus = (
-        ['Canis'] * 25 + ['Felis'] * 25 + ['Corvus'] * 15 + ['Passer'] * 15 + ['Lacerta'] * 15 + ['Python'] * 15 + ['Unknown'] * 10 + ['Misc'] * 10 + ['Homo'] * 15 + ['Pan'] * 10
-    )[:n]
-    species = ([f'Species_{i}' for i in range(n)])
-    feature_1 = np.concatenate([
-        np.random.normal(1.2, 0.2, 50),
-        np.random.normal(0.9, 0.15, 30),
-        np.random.normal(1.5, 0.25, 30),
-        np.random.normal(1.0, 0.3, 10),
-        np.random.normal(1.1, 0.3, 10),
-        np.random.normal(1.3, 0.2, 15),
-        np.random.normal(1.4, 0.2, 10)
-    ])
-    feature_2 = np.concatenate([
-        np.random.normal(0.8, 0.1, 50),
-        np.random.normal(1.1, 0.1, 30),
-        np.random.normal(0.7, 0.1, 30),
-        np.random.normal(0.9, 0.2, 10),
-        np.random.normal(1.0, 0.2, 10),
-        np.random.normal(0.85, 0.1, 15),
-        np.random.normal(0.95, 0.1, 10)
-    ])
-    feature_3 = np.concatenate([
-        np.random.normal(3.1, 0.3, 50),
-        np.random.normal(2.8, 0.25, 30),
-        np.random.normal(3.5, 0.35, 30),
-        np.random.normal(3.0, 0.4, 10),
-        np.random.normal(2.9, 0.4, 10),
-        np.random.normal(3.2, 0.3, 15),
-        np.random.normal(3.3, 0.3, 10)
-    ])
-    feature_1[3] = 2.2
-    feature_1[30] = 2.8
-    feature_2[3] = 0.5
-    feature_2[30] = 0.4
-    feature_3[3] = 4.2
-    feature_3[30] = 4.8
+    
+    # Create more realistic taxonomic conservation data
+    n_entries = 200
+    
+    # Define taxonomic groups with realistic conservation patterns
+    taxon_groups = {
+        'Primates': {'n': 35, 'phyloP_mean': 2.8, 'phyloP_std': 0.8, 'gerp_mean': 4.2, 'gerp_std': 1.2, 'phastCons_mean': 0.75, 'phastCons_std': 0.15},
+        'Carnivores': {'n': 30, 'phyloP_mean': 2.2, 'phyloP_std': 0.7, 'gerp_mean': 3.8, 'gerp_std': 1.0, 'phastCons_mean': 0.68, 'phastCons_std': 0.18},
+        'Rodents': {'n': 40, 'phyloP_mean': 1.8, 'phyloP_std': 0.6, 'gerp_mean': 3.2, 'gerp_std': 0.9, 'phastCons_mean': 0.62, 'phastCons_std': 0.16},
+        'Birds': {'n': 35, 'phyloP_mean': 2.5, 'phyloP_std': 0.9, 'gerp_mean': 4.0, 'gerp_std': 1.1, 'phastCons_mean': 0.72, 'phastCons_std': 0.17},
+        'Reptiles': {'n': 25, 'phyloP_mean': 1.5, 'phyloP_std': 0.5, 'gerp_mean': 2.8, 'gerp_std': 0.8, 'phastCons_mean': 0.55, 'phastCons_std': 0.14},
+        'Fish': {'n': 35, 'phyloP_mean': 1.2, 'phyloP_std': 0.4, 'gerp_mean': 2.2, 'gerp_std': 0.7, 'phastCons_mean': 0.48, 'phastCons_std': 0.12}
+    }
+    
+    # Generate realistic gene names
+    gene_families = ['BRCA', 'TP53', 'EGFR', 'MYC', 'RAS', 'PIK3', 'PTEN', 'APC', 'KRAS', 'BRAF']
+    
+    # Create data arrays
+    taxon_group_list = []
+    phyloP_scores = []
+    gerp_scores = []
+    phastCons_scores = []
+    gene_names = []
+    chromosomes = []
+    positions = []
+    functional_regions = []
+    
+    entry_counter = 0
+    for group_name, params in taxon_groups.items():
+        n = params['n']
+        
+        # Generate conservation scores with group-specific patterns
+        group_phyloP = np.random.normal(params['phyloP_mean'], params['phyloP_std'], n)
+        group_gerp = np.random.normal(params['gerp_mean'], params['gerp_std'], n)
+        group_phastCons = np.random.beta(2, 2, n) * 0.4 + (params['phastCons_mean'] - 0.2)
+        
+        # Ensure realistic ranges
+        group_phyloP = np.clip(group_phyloP, -2, 6)
+        group_gerp = np.clip(group_gerp, -5, 8)
+        group_phastCons = np.clip(group_phastCons, 0, 1)
+        
+        # Add some outliers for interesting analysis
+        if n > 10:
+            outlier_indices = np.random.choice(n, size=2, replace=False)
+            group_phyloP[outlier_indices] *= 1.8
+            group_gerp[outlier_indices] *= 1.5
+        
+        # Generate other attributes
+        group_genes = [f"{np.random.choice(gene_families)}{i+entry_counter}" for i in range(n)]
+        group_chroms = np.random.choice([f'chr{i}' for i in range(1, 23)] + ['chrX', 'chrY'], n)
+        group_positions = np.random.randint(1000000, 250000000, n)
+        group_functions = np.random.choice(['exon', 'intron', 'promoter', 'enhancer', 'UTR'], n, 
+                                         p=[0.4, 0.3, 0.1, 0.1, 0.1])
+        
+        # Append to lists
+        taxon_group_list.extend([group_name] * n)
+        phyloP_scores.extend(group_phyloP)
+        gerp_scores.extend(group_gerp)
+        phastCons_scores.extend(group_phastCons)
+        gene_names.extend(group_genes)
+        chromosomes.extend(group_chroms)
+        positions.extend(group_positions)
+        functional_regions.extend(group_functions)
+        
+        entry_counter += n
+    
+    # Create additional derived scores for analysis
+    total_entries = len(taxon_group_list)
+    
+    # CADD-like scores (0-40 range)
+    cadd_scores = np.random.beta(2, 5, total_entries) * 35 + 2
+    
+    # REVEL-like scores (0-1 range)
+    revel_scores = np.random.beta(1.5, 4, total_entries)
+    
+    # Create comprehensive DataFrame
     demo_data = pd.DataFrame({
-        'taxon_group': ['Mammals'] * 50 + ['Birds'] * 30 + ['Reptiles'] * 30 + ['unknown'] * 10 + ['misc'] * 10 + ['primate'] * 15 + ['hominid'] * 10,
-        'conservation_score': np.concatenate([mammals_data, birds_data, reptiles_data, unknown_data, misc_data, primate_data, hominid_data]),
-        'feature_1': feature_1,
-        'feature_2': feature_2,
-        'feature_3': feature_3,
-        'gene_name': [f'Gene_{i}' for i in range(n)],
-        'chromosome': np.random.choice(['chr1', 'chr2', 'chr3', 'chr4', 'chr5'], n),
-        'position': np.random.randint(1000, 999999, n),
-        'family': family,
-        'genus': genus,
-        'species': species
+        'gene': gene_names,
+        'chromosome': chromosomes,
+        'position': positions,
+        'taxon_group': taxon_group_list,
+        'functional_region': functional_regions,
+        'phyloP_score': np.round(phyloP_scores, 3),
+        'GERP_score': np.round(gerp_scores, 3),
+        'phastCons_score': np.round(phastCons_scores, 3),
+        'CADD_score': np.round(cadd_scores, 2),
+        'REVEL_score': np.round(revel_scores, 4),
+        # Legacy column for backward compatibility
+        'conservation_score': np.round(phyloP_scores, 3)
     })
+    
+    # Add some metadata
+    demo_data.attrs['description'] = 'Sample conservation dataset with multiple score types'
+    demo_data.attrs['n_groups'] = len(taxon_groups)
+    demo_data.attrs['score_types'] = ['phyloP', 'GERP', 'phastCons', 'CADD', 'REVEL']
+    
     return demo_data
+
+
+def create_sample_vcf_data():
+    """Create sample VCF-like data for variant conservation analysis demonstration."""
+    import numpy as np
+    import pandas as pd
+    
+    np.random.seed(42)  # For reproducible results
+    
+    # Create realistic variant data
+    n_variants = 50
+    
+    # Generate chromosomes (focusing on common ones)
+    chromosomes = np.random.choice(['chr1', 'chr2', 'chr3', 'chr7', 'chr11', 'chr17', 'chr19', 'chrX'], 
+                                 n_variants, p=[0.15, 0.12, 0.10, 0.12, 0.10, 0.15, 0.15, 0.11])
+    
+    # Generate positions
+    positions = []
+    for chrom in chromosomes:
+        if chrom == 'chr1':
+            pos = np.random.randint(1000000, 247000000)
+        elif chrom == 'chr17':
+            pos = np.random.randint(1000000, 83000000)  # BRCA1 region
+        elif chrom == 'chr19':
+            pos = np.random.randint(1000000, 59000000)
+        else:
+            pos = np.random.randint(1000000, 150000000)
+        positions.append(pos)
+    
+    # Generate realistic gene names
+    gene_names = [
+        'BRCA1', 'BRCA2', 'TP53', 'PTEN', 'APC', 'KRAS', 'BRAF', 'PIK3CA', 'EGFR', 'MYC',
+        'RB1', 'CDKN2A', 'VHL', 'MLH1', 'MSH2', 'ATM', 'CHEK2', 'PALB2', 'CDH1', 'STK11',
+        'SMAD4', 'BMPR1A', 'MUTYH', 'PMS2', 'MSH6', 'EPCAM', 'POLE', 'POLD1', 'NTHL1', 'AXIN2'
+    ]
+    
+    # Generate variant attributes
+    variant_data = []
+    for i in range(n_variants):
+        # Select random gene
+        gene = np.random.choice(gene_names)
+        
+        # Generate conservation scores based on gene importance
+        if gene in ['BRCA1', 'BRCA2', 'TP53', 'PTEN']:  # High conservation genes
+            phyloP = np.random.normal(3.5, 1.0)
+            gerp = np.random.normal(5.2, 1.5)
+            phastCons = np.random.beta(3, 1) * 0.8 + 0.15
+            cadd = np.random.normal(25, 8)
+        elif gene in ['KRAS', 'BRAF', 'PIK3CA', 'EGFR']:  # Moderate conservation
+            phyloP = np.random.normal(2.8, 0.8)
+            gerp = np.random.normal(4.1, 1.2)
+            phastCons = np.random.beta(2, 2) * 0.7 + 0.2
+            cadd = np.random.normal(20, 6)
+        else:  # Variable conservation
+            phyloP = np.random.normal(2.0, 1.2)
+            gerp = np.random.normal(3.2, 1.8)
+            phastCons = np.random.beta(1.5, 2.5) * 0.8 + 0.1
+            cadd = np.random.normal(15, 10)
+        
+        # Ensure realistic ranges
+        phyloP = np.clip(phyloP, -3, 7)
+        gerp = np.clip(gerp, -8, 10)
+        phastCons = np.clip(phastCons, 0, 1)
+        cadd = np.clip(cadd, 0, 40)
+        
+        # Generate REF and ALT alleles
+        ref_alleles = ['A', 'T', 'G', 'C']
+        ref = np.random.choice(ref_alleles)
+        alt_choices = [x for x in ref_alleles if x != ref]
+        alt = np.random.choice(alt_choices)
+        
+        # Variant types
+        var_type = np.random.choice(['SNV', 'indel', 'substitution'], p=[0.7, 0.2, 0.1])
+        
+        # Functional annotations
+        consequences = ['missense_variant', 'synonymous_variant', 'stop_gained', 'splice_site', 'intron_variant']
+        consequence = np.random.choice(consequences, p=[0.4, 0.3, 0.1, 0.1, 0.1])
+        
+        variant_data.append({
+            'CHROM': chromosomes[i],
+            'POS': positions[i],
+            'ID': f'rs{np.random.randint(1000000, 99999999)}',
+            'REF': ref,
+            'ALT': alt,
+            'GENE': gene,
+            'Consequence': consequence,
+            'Variant_Type': var_type,
+            'phyloP_score': round(phyloP, 3),
+            'GERP_score': round(gerp, 3),
+            'phastCons_score': round(phastCons, 3),
+            'CADD_score': round(cadd, 2),
+            'REVEL_score': round(np.random.beta(1.5, 4), 4),
+            'gnomAD_AF': round(np.random.exponential(0.01), 6),  # Allele frequency
+            'Pathogenicity': np.random.choice(['Benign', 'Likely_benign', 'VUS', 'Likely_pathogenic', 'Pathogenic'],
+                                            p=[0.3, 0.25, 0.3, 0.1, 0.05])
+        })
+    
+    sample_vcf_df = pd.DataFrame(variant_data)
+    
+    # Add metadata
+    sample_vcf_df.attrs['description'] = 'Sample VCF-like dataset for variant conservation analysis'
+    sample_vcf_df.attrs['n_variants'] = n_variants
+    sample_vcf_df.attrs['score_types'] = ['phyloP', 'GERP', 'phastCons', 'CADD', 'REVEL']
+    
+    return sample_vcf_df
 #!/usr/bin/env python3
 """
 TaxoConserv - Input Parser Module

@@ -307,28 +307,42 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
+    # Tab sistemi ekleme - Conservation analysis ve Variant analysis
+    tab1, tab2 = st.tabs(["🧬 Taxonomic Conservation Analysis", "🔬 Variant Conservation Analysis"])
+    
+    with tab1:
+        # Mevcut conservation analysis interface
+        run_taxonomic_analysis()
+    
+    with tab2:
+        # Yeni variant analysis interface
+        run_variant_analysis()
+
+def run_taxonomic_analysis():
+    """Mevcut taxonomic conservation analysis interface"""
+    st.subheader("🧬 Taxonomic Conservation Analysis")
+    
     # Sidebar configuration
     st.sidebar.header("⚙️ Configuration")
     st.sidebar.markdown("---")
+    
     # Data Input Section
     st.sidebar.subheader("📁 Data Input")
-    # File uploader için dinamik key kullan
-    if 'file_uploader_key' not in st.session_state:
-        st.session_state['file_uploader_key'] = 0
     
+    # File uploader
     uploaded_file = st.sidebar.file_uploader(
         "Upload Conservation Data",
         type=['csv', 'tsv'],
-        help="Upload a CSV or TSV file containing conservation scores and taxonomic groups",
-        key='uploaded_file_' + str(st.session_state['file_uploader_key'])
+        help="Upload a CSV or TSV file containing conservation scores and taxonomic groups"
     )
     
-    # Sample data button with icon
+    # Sample data button
     if st.sidebar.button(
         "🧪 Load Sample Data",
-        help="Load built-in conservation dataset for testing (PhyloP, GERP, phastCons scores)",
+        help="Load built-in conservation dataset for testing (phyloP, GERP, phastCons scores across taxonomic groups)",
         use_container_width=True,
-        type="secondary"
+        type="secondary",
+        key="taxonomic_sample_data_button"
     ):
         st.session_state['demo_loaded'] = True
         st.rerun()
@@ -336,31 +350,263 @@ def main():
     # Add sample data info
     with st.sidebar.expander("ℹ️ About Sample Data", expanded=False):
         st.markdown("""
-        **Conservation Dataset Features**
-        - **Scores**: PhyloP, GERP, phastCons
-        - **Groups**: Taxonomic families  
-        - **Size**: 500+ entries
-        - **Use**: Testing & demonstration
+        **Taxonomic Conservation Dataset**
+        - **Scores**: phyloP, GERP, phastCons, CADD, REVEL
+        - **Groups**: Primates, Carnivores, Rodents, Birds, Reptiles, Fish
+        - **Genes**: BRCA, TP53, EGFR, MYC, KRAS, etc.
+        - **Size**: 200 entries across 6 taxonomic groups
+        - **Features**: Realistic conservation patterns, outliers, multiple score types
+        - **Use**: Testing & demonstration of taxonomic analysis
         """)
     
-    st.sidebar.markdown("---")
-    # Reset button with icon
-    if st.sidebar.button("🔄 Reset", help="Clear all selections and restart the app"):
-        # Tüm session_state'i temizle
-        keys_to_delete = list(st.session_state.keys())
-        for k in keys_to_delete:
-            del st.session_state[k]
-        
-        # file_uploader'ın key'ini artırarak arayüzde de sıfırlanmasını sağla
-        st.session_state['file_uploader_key'] = st.session_state.get('file_uploader_key', 0) + 1
-        
-        # Veri yükleme flag'larını açıkça sıfırla
-        st.session_state['demo_loaded'] = False
-        st.session_state['file_loaded'] = False
-        st.session_state['current_data'] = None
-        st.session_state['uploaded_file_cleared'] = True  # Yeni flag ekle
-        
+    # Reset button
+    if st.sidebar.button("🔄 Reset", help="Clear all selections and restart", key="taxonomic_reset_button"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
         st.rerun()
+    
+    # Load data
+    data = None
+    
+    # Demo data loading
+    if st.session_state.get('demo_loaded', False):
+        try:
+            from src.input_parser import create_demo_data
+            data = create_demo_data()
+            st.sidebar.success("✅ Demo data loaded successfully!")
+            st.session_state['group_column'] = 'taxon_group'
+            
+            # Detect conservation scores
+            detected_scores = detect_conservation_scores(data)
+            if detected_scores:
+                num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+                prioritized_scores = prioritize_conservation_scores(num_cols, detected_scores)
+                st.session_state['score_column'] = prioritized_scores[0]
+            else:
+                st.session_state['score_column'] = 'phyloP_score'
+        except Exception as e:
+            st.error(f"Error loading demo data: {e}")
+    
+    # File upload handling
+    elif uploaded_file is not None:
+        try:
+            if uploaded_file.name.endswith('.csv'):
+                data = pd.read_csv(uploaded_file)
+            else:
+                data = pd.read_csv(uploaded_file, sep='\t')
+            
+            st.sidebar.success(f"✅ File '{uploaded_file.name}' loaded successfully!")
+            
+            # Auto-detect columns
+            if 'taxon_group' in data.columns:
+                st.session_state['group_column'] = 'taxon_group'
+            else:
+                categorical_cols = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
+                if categorical_cols:
+                    st.session_state['group_column'] = categorical_cols[0]
+            
+            # Detect conservation scores
+            detected_scores = detect_conservation_scores(data)
+            if detected_scores:
+                num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+                prioritized_scores = prioritize_conservation_scores(num_cols, detected_scores)
+                st.session_state['score_column'] = prioritized_scores[0]
+            else:
+                num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+                if num_cols:
+                    st.session_state['score_column'] = num_cols[0]
+            
+        except Exception as e:
+            st.sidebar.error(f"❌ Error loading file: {e}")
+    
+    # Main interface
+    if data is not None:
+        # Configuration sidebar
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🏷️ Analysis Configuration")
+        
+        # Group column selection
+        group_options = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
+        if not group_options:
+            group_options = list(data.columns)
+        
+        group_column = st.sidebar.selectbox(
+            "Grouping Column",
+            options=group_options,
+            index=group_options.index(st.session_state.get('group_column', group_options[0])) if st.session_state.get('group_column') in group_options else 0,
+            help="Select column for taxonomic grouping"
+        )
+        
+        # Score column selection
+        score_options = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+        if score_options:
+            score_column = st.sidebar.selectbox(
+                "Conservation Score Column",
+                options=score_options,
+                index=score_options.index(st.session_state.get('score_column', score_options[0])) if st.session_state.get('score_column') in score_options else 0,
+                help="Select conservation score to analyze"
+            )
+        else:
+            st.sidebar.error("No numeric columns found for analysis!")
+            return
+        
+        # Visualization options
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🎨 Visualization")
+        
+        plot_type = st.sidebar.selectbox(
+            "Plot Type",
+            options=["boxplot", "violin", "histogram", "swarm", "kde"],
+            help="Select visualization type"
+        )
+        
+        color_palette = st.sidebar.selectbox(
+            "Color Palette",
+            options=["Set1", "Set2", "Set3", "tab10", "viridis"],
+            index=2
+        )
+        
+        interactive_mode = st.sidebar.checkbox(
+            "Interactive Plots",
+            value=False,
+            help="Generate interactive plots with Plotly"
+        )
+        
+        # Analysis button
+        if st.sidebar.button("▶️ Run Analysis", type="primary", key="simple_analysis_button"):
+            # Data summary
+            st.subheader("📊 Data Summary")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Rows", len(data))
+            with col2:
+                st.metric("Groups", data[group_column].nunique())
+            with col3:
+                st.metric("Score Range", f"{data[score_column].min():.2f} - {data[score_column].max():.2f}")
+            with col4:
+                st.metric("Missing Values", data[score_column].isnull().sum())
+            
+            # Group statistics
+            st.subheader("📋 Group Statistics")
+            group_stats = data.groupby(group_column)[score_column].agg(['count', 'mean', 'std', 'min', 'max']).round(3)
+            st.dataframe(group_stats, use_container_width=True)
+            
+            # Statistical analysis
+            st.subheader("🧮 Statistical Analysis")
+            try:
+                from src.analysis import perform_statistical_analysis
+                stats_results = perform_statistical_analysis(data, score_column, group_column)
+                
+                if stats_results:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Kruskal-Wallis H", f"{stats_results['h_statistic']:.4f}")
+                        st.metric("p-value", f"{stats_results['p_value']:.6f}")
+                    with col2:
+                        significance = "✅ Significant" if stats_results['significant'] else "❌ Not Significant"
+                        st.metric("Result", significance)
+                        st.metric("Groups Compared", stats_results['n_groups'])
+                        
+            except Exception as e:
+                st.warning(f"Statistical analysis not available: {e}")
+            
+            # Visualization
+            st.subheader("📈 Visualization")
+            try:
+                # Create interactive plots with plotly (always use plotly for simplicity)
+                if plot_type == "boxplot":
+                    fig = px.box(data, x=group_column, y=score_column, 
+                               color=group_column, color_discrete_sequence=px.colors.qualitative.Set3,
+                               title=f"{score_column} by {group_column}")
+                elif plot_type == "violin":
+                    fig = px.violin(data, x=group_column, y=score_column, 
+                                  color=group_column, color_discrete_sequence=px.colors.qualitative.Set3,
+                                  title=f"{score_column} Distribution by {group_column}")
+                elif plot_type == "histogram":
+                    fig = px.histogram(data, x=score_column, color=group_column, 
+                                     color_discrete_sequence=px.colors.qualitative.Set3,
+                                     title=f"{score_column} Histogram by {group_column}")
+                elif plot_type == "swarm":
+                    fig = px.strip(data, x=group_column, y=score_column, 
+                                 color=group_column, color_discrete_sequence=px.colors.qualitative.Set3,
+                                 title=f"{score_column} by {group_column}")
+                elif plot_type == "kde":
+                    # Create density plot for each group
+                    fig = go.Figure()
+                    colors = px.colors.qualitative.Set3
+                    for i, group in enumerate(data[group_column].unique()):
+                        group_data = data[data[group_column] == group][score_column]
+                        fig.add_trace(go.Histogram(
+                            x=group_data, 
+                            name=group, 
+                            histnorm='probability density',
+                            opacity=0.7,
+                            marker_color=colors[i % len(colors)]
+                        ))
+                    fig.update_layout(title=f"{score_column} Density by {group_column}")
+                else:
+                    fig = px.scatter(data, x=group_column, y=score_column, 
+                                   color=group_column, color_discrete_sequence=px.colors.qualitative.Set3,
+                                   title=f"{score_column} by {group_column}")
+                
+                fig.update_layout(xaxis_title=group_column, yaxis_title=score_column)
+                st.plotly_chart(fig, use_container_width=True)
+                    
+            except Exception as e:
+                st.error(f"Visualization error: {e}")
+                st.info("💡 Try using a different plot type or check your data format.")
+            
+            # Data export
+            st.subheader("💾 Export Data")
+            csv_data = data.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Data as CSV",
+                data=csv_data,
+                file_name=f"conservation_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+    
+    else:
+        # Welcome interface
+        st.markdown("""
+        ### Welcome to Taxonomic Conservation Analysis
+        
+        This tool analyzes evolutionary conservation scores across different taxonomic groups.
+        
+        **Getting Started:**
+        1. **Upload your data** using the sidebar file uploader, or
+        2. **Load sample data** to explore the interface with realistic conservation data
+        3. **Configure analysis** parameters in the sidebar
+        4. **Run analysis** to generate results and visualizations
+        
+        **Data Format:**
+        Your CSV/TSV file should contain:
+        - **Conservation scores** (numeric columns like phyloP, GERP, phastCons, CADD)
+        - **Taxonomic groups** (categorical column like taxon_group, family, order)
+        - **Gene information** (optional: gene names, chromosomes, positions)
+        
+        **Example:**
+        ```
+        gene,chromosome,position,phyloP_score,taxon_group
+        BRCA1,chr17,43094464,3.245,Primates
+        TP53,chr17,7676040,2.156,Carnivores
+        EGFR,chr7,55181378,2.890,Birds
+        ```
+        """)
+        
+        # Quick example
+        with st.expander("📖 View Sample Data Format", expanded=False):
+            sample_data = pd.DataFrame({
+                'gene': ['BRCA1', 'TP53', 'EGFR'],
+                'chromosome': ['chr17', 'chr17', 'chr7'],
+                'position': [43094464, 7676040, 55181378],
+                'taxon_group': ['Primates', 'Carnivores', 'Birds'],
+                'phyloP_score': [3.245, 2.156, 2.890],
+                'GERP_score': [4.820, 3.567, 4.123],
+                'phastCons_score': [0.892, 0.734, 0.812]
+            })
+            st.dataframe(sample_data, use_container_width=True)
     
     data = None
     # Reset flag'ini kontrol et - eğer reset yapıldıysa dosya yüklemeyi atla
@@ -1043,7 +1289,7 @@ def main():
         st.sidebar.markdown("---")
         
         analysis_enabled = data is not None and group_column and score_column
-        run_analysis_clicked = st.sidebar.button("▶️ Run Analysis", type="primary", disabled=not analysis_enabled)
+        run_analysis_clicked = st.sidebar.button("▶️ Run Analysis", type="primary", disabled=not analysis_enabled, key="advanced_analysis_button")
         analysis_results = None  # Always define before use
         # Scroll flag: run_analysis_clicked only
         if run_analysis_clicked:
@@ -1534,6 +1780,339 @@ def main():
                                 )
                             except Exception as e:
                                 st.error(f"Static SVG export failed: {e}")
+
+def run_variant_analysis():
+    """VCF variant conservation analysis interface"""
+    st.header("🔬 Variant Conservation Analysis")
+    
+    st.markdown("""
+    Upload a VCF file to analyze conservation scores for individual variants, or use sample data to explore the interface.
+    This module provides detailed conservation patterns for specific genomic positions.
+    """)
+    
+    # Data input section
+    st.subheader("📁 Data Input")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # VCF file uploader
+        vcf_file = st.file_uploader(
+            "Upload VCF File",
+            type=['vcf'],
+            help="Upload a VCF file containing variants for conservation analysis"
+        )
+        
+        # Sample data button
+        if st.button(
+            "🧪 Load Sample VCF Data",
+            help="Load built-in sample variant dataset for testing",
+            type="secondary",
+            key="variant_sample_data_button"
+        ):
+            st.session_state['vcf_sample_loaded'] = True
+            st.rerun()
+    
+    with col2:
+        # Conservation database uploader
+        conservation_db = st.file_uploader(
+            "Upload Conservation Database (Optional)",
+            type=['csv', 'tsv'],
+            help="Upload conservation score database or use built-in data"
+        )
+        
+        use_demo_conservation = st.checkbox(
+            "Use Built-in Conservation Database",
+            value=True,
+            help="Use built-in conservation data for analysis"
+        )
+    
+    # About sample data
+    with st.expander("ℹ️ About Sample VCF Data", expanded=False):
+        st.markdown("""
+        **Sample VCF Dataset Features**
+        - **Variants**: 50 clinically relevant variants
+        - **Genes**: BRCA1, BRCA2, TP53, PTEN, KRAS, etc.
+        - **Scores**: phyloP, GERP, phastCons, CADD, REVEL
+        - **Annotations**: Consequence, pathogenicity predictions
+        - **Use**: Testing variant conservation analysis workflow
+        """)
+    
+    # Configuration section
+    st.subheader("⚙️ Analysis Configuration")
+    
+    col1, col2 = st.columns(2)
+    
+    with col2:
+        max_variants = st.number_input(
+            "Max Variants to Analyze",
+            min_value=1,
+            max_value=10000,
+            value=100,
+            help="🔢 Performance Limit: Large VCF files can contain thousands of variants. This setting limits how many variants to analyze to keep the interface responsive. For example, if your VCF has 5000 variants but this is set to 100, only the first 100 variants will be processed."
+        )
+        
+        st.caption("💡 **Why limit variants?** VCF files can be very large (10K+ variants). Processing all variants at once might be slow, so we analyze a manageable subset first.")
+    
+    # Handle sample VCF data loading
+    variant_data = None
+    if st.session_state.get('vcf_sample_loaded', False):
+        try:
+            from src.input_parser import create_sample_vcf_data
+            variant_data = create_sample_vcf_data()
+            st.success("✅ Sample VCF data loaded successfully!")
+            st.info(f"📊 Loaded {len(variant_data)} sample variants with conservation scores")
+        except Exception as e:
+            st.error(f"Error loading sample VCF data: {e}")
+    
+    # Display variant data analysis
+    if variant_data is not None:
+        st.subheader("📊 Variant Conservation Analysis")
+        
+        # Data summary
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Variants", len(variant_data))
+        with col2:
+            st.metric("Unique Genes", variant_data['GENE'].nunique())
+        with col3:
+            conservation_scores = ['phyloP_score', 'GERP_score', 'phastCons_score']
+            available_scores = [col for col in conservation_scores if col in variant_data.columns]
+            st.metric("Conservation Scores", len(available_scores))
+        with col4:
+            pathogenic_variants = variant_data[variant_data['Pathogenicity'].isin(['Pathogenic', 'Likely_pathogenic'])]
+            st.metric("Pathogenic/Likely", len(pathogenic_variants))
+        
+        # Display data table
+        st.subheader("📋 Variant Data Table")
+        
+        # Filter options
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_genes = st.multiselect(
+                "Filter by Gene",
+                options=sorted(variant_data['GENE'].unique()),
+                default=[]
+            )
+        with col2:
+            selected_pathogenicity = st.multiselect(
+                "Filter by Pathogenicity",
+                options=variant_data['Pathogenicity'].unique(),
+                default=[]
+            )
+        
+        # Apply filters
+        filtered_data = variant_data.copy()
+        if selected_genes:
+            filtered_data = filtered_data[filtered_data['GENE'].isin(selected_genes)]
+        if selected_pathogenicity:
+            filtered_data = filtered_data[filtered_data['Pathogenicity'].isin(selected_pathogenicity)]
+        
+        # Display filtered data
+        display_cols = ['GENE', 'CHROM', 'POS', 'REF', 'ALT', 'Consequence', 'phyloP_score', 'GERP_score', 'phastCons_score', 'Pathogenicity']
+        available_display_cols = [col for col in display_cols if col in filtered_data.columns]
+        
+        st.dataframe(filtered_data[available_display_cols], use_container_width=True)
+        
+        # Conservation analysis
+        if st.button("🔍 Analyze Conservation Patterns", type="primary", key="variant_conservation_analysis_button"):
+            st.subheader("📈 Conservation Score Analysis")
+            
+            # Conservation score distributions
+            conservation_cols = ['phyloP_score', 'GERP_score', 'phastCons_score']
+            available_conservation_cols = [col for col in conservation_cols if col in filtered_data.columns]
+            
+            if available_conservation_cols:
+                # Create conservation score plots
+                for score_col in available_conservation_cols:
+                    st.markdown(f"**{score_col} Distribution**")
+                    
+                    # Box plot by pathogenicity
+                    if len(filtered_data['Pathogenicity'].unique()) > 1:
+                        fig = px.box(filtered_data, x='Pathogenicity', y=score_col, 
+                                   color='Pathogenicity',
+                                   title=f"{score_col} by Pathogenicity Classification")
+                        fig.update_layout(xaxis_title="Pathogenicity", yaxis_title=score_col)
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Histogram
+                    fig = px.histogram(filtered_data, x=score_col, nbins=20,
+                                     title=f"{score_col} Distribution")
+                    fig.update_layout(xaxis_title=score_col, yaxis_title="Count")
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                # Gene-level conservation analysis
+                if len(selected_genes) > 1 or not selected_genes:
+                    st.markdown("**Conservation by Gene**")
+                    
+                    # Calculate mean conservation scores by gene
+                    gene_conservation = filtered_data.groupby('GENE')[available_conservation_cols].mean().round(3)
+                    gene_conservation = gene_conservation.reset_index()
+                    
+                    # Display top conserved genes
+                    for score_col in available_conservation_cols:
+                        top_genes = gene_conservation.nlargest(10, score_col)
+                        st.markdown(f"*Top 10 genes by {score_col}:*")
+                        
+                        fig = px.bar(top_genes, x='GENE', y=score_col,
+                                   title=f"Top Genes by {score_col}")
+                        fig.update_layout(xaxis_title="Gene", yaxis_title=score_col)
+                        st.plotly_chart(fig, use_container_width=True)
+                
+                # Summary statistics
+                st.subheader("📊 Conservation Summary Statistics")
+                summary_stats = filtered_data[available_conservation_cols].describe().round(3)
+                st.dataframe(summary_stats, use_container_width=True)
+            
+            else:
+                st.warning("No conservation score columns found in the data.")
+        
+        # Export data
+        st.subheader("💾 Export Data")
+        csv_data = filtered_data.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Filtered Data as CSV",
+            data=csv_data,
+            file_name=f"variant_conservation_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+    
+    # Handle VCF file upload (existing code)
+    elif vcf_file is not None:
+        try:
+            # Import variant analysis module
+            from src.variant_analysis import VariantConservationAnalyzer
+            
+            # Initialize analyzer
+            analyzer = VariantConservationAnalyzer()
+            
+            # Load conservation database
+            if use_demo_conservation:
+                from src.input_parser import create_demo_data
+                conservation_data = create_demo_data()
+                analyzer.conservation_data = conservation_data
+                st.success("✅ Demo conservation database loaded")
+            elif conservation_db is not None:
+                conservation_data = pd.read_csv(conservation_db)
+                analyzer.conservation_data = conservation_data
+                st.success("✅ Custom conservation database loaded")
+            else:
+                st.warning("⚠️ No conservation database loaded. Please upload a database or use demo data.")
+                return
+            
+            # Save VCF file temporarily and parse
+            vcf_content = vcf_file.read()
+            temp_vcf_path = f"temp_variants_{int(time.time())}.vcf"
+            
+            with open(temp_vcf_path, 'wb') as f:
+                f.write(vcf_content)
+            
+            # Parse VCF file
+            with st.spinner("Parsing VCF file..."):
+                variants = analyzer.parse_vcf_file(temp_vcf_path)
+            
+            # Limit variants for performance
+            if len(variants) > max_variants:
+                variants = variants[:max_variants]
+                st.info(f"ℹ️ Analyzing first {max_variants} variants (out of {len(variants)} total)")
+            
+            st.success(f"✅ Parsed {len(variants)} variants from VCF file")
+            
+            # Analyze conservation for variants
+            if st.button("🔍 Analyze Variant Conservation", type="primary", key="vcf_conservation_analysis_button"):
+                with st.spinner("Analyzing conservation scores..."):
+                    results = analyzer.analyze_variant_batch(variants)
+                
+                # Display results
+                st.subheader("📊 Variant Conservation Results")
+                
+                # Summary statistics
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    total_variants = len(results)
+                    st.metric("Total Variants", total_variants)
+                
+                with col2:
+                    with_conservation = results['conservation_available'].sum()
+                    st.metric("With Conservation Data", with_conservation)
+                
+                with col3:
+                    if with_conservation > 0:
+                        coverage = (with_conservation / total_variants) * 100
+                        st.metric("Coverage", f"{coverage:.1f}%")
+                
+                with col4:
+                    if 'overall_statistics' in results.columns:
+                        high_conservation = 0  # Placeholder for high conservation count
+                        st.metric("High Conservation", high_conservation)
+                
+                # Detailed results table
+                st.subheader("📋 Detailed Results")
+                
+                # Filter and display results
+                display_cols = ['variant_id', 'chromosome', 'position', 'ref', 'alt', 'conservation_available']
+                
+                if 'conservation_interpretation' in results.columns:
+                    display_cols.append('conservation_interpretation')
+                
+                display_results = results[display_cols].copy()
+                st.dataframe(display_results, use_container_width=True)
+                
+                # Conservation visualization for variants with data
+                conservation_variants = results[results['conservation_available'] == True]
+                
+                if len(conservation_variants) > 0:
+                    st.subheader("📈 Conservation Visualization")
+                    
+                    # Create conservation score plots
+                    if len(conservation_variants) > 0:
+                        st.info("🚧 Conservation plotting for variants is under development. Results table shows conservation analysis.")
+                
+                # Download results
+                st.subheader("💾 Download Results")
+                
+                csv_data = results.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download Results as CSV",
+                    data=csv_data,
+                    file_name=f"variant_conservation_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+            
+            # Clean up temporary file
+            try:
+                os.remove(temp_vcf_path)
+            except:
+                pass
+                
+        except Exception as e:
+            st.error(f"❌ Error analyzing VCF file: {e}")
+            st.info("💡 Make sure the VCF file is properly formatted and contains valid variant data.")
+    
+    else:
+        st.info("👆 Upload a VCF file to start variant conservation analysis")
+        
+        # Help section
+        with st.expander("ℹ️ About Variant Conservation Analysis", expanded=False):
+            st.markdown("""
+            **Variant Conservation Analysis** provides:
+            
+            - **Per-variant conservation scores** (PhyloP, GERP, phastCons)
+            - **Taxonomic conservation patterns** for each variant position
+            - **Conservation interpretation** for ACMG criteria support
+            - **Statistical analysis** of conservation significance
+            - **Export capabilities** for clinical documentation
+            
+            **Input Requirements:**
+            - VCF file with variant positions
+            - Conservation score database (or use demo data)
+            
+            **Use Cases:**
+            - Clinical variant interpretation support
+            - Research variant prioritization
+            - Conservation evidence for ACMG PP3/BP4 criteria
+            """)
 
 if __name__ == "__main__":
     main()
