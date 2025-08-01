@@ -1,6 +1,8 @@
 # TaxoConserv
 
-Conservation score analysis tool for taxonomic data with web interface.
+**A comprehensive web-based platform for statistical analysis and visualization of evolutionary conservation scores across taxonomic groups.**
+
+TaxoConserv enables researchers to analyze conservation metrics (PhyloP, GERP, phastCons) with robust statistical methods, interactive visualizations, and comparative analysis between different taxonomic classifications.
 
 🌐 **Live Demo:** https://taxoconserv.streamlit.app/
 
