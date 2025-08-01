@@ -21,13 +21,6 @@ pip install -r requirements.txt
 python taxoconserv.py --input data.csv --score phyloP --group taxon
 ```
 
-### Web Interface (Recommended)
-```bash
-streamlit run web_taxoconserv.py
-```
-Open browser to `http://localhost:8501`
-
-**Or use the live demo:** https://taxoconserv.streamlit.app/
 
 ## Features
 
@@ -94,17 +87,15 @@ python -m pytest tests/
 
 ## Documentation
 
-- 🌐 **Live Demo**: https://taxoconserv.streamlit.app/
+- 🌐 **Web Interface**: https://taxoconserv.streamlit.app/
 - 📋 **Web Interface Guide**: `WEB_INTERFACE_GUIDE.md`
-- 📚 **User Guide**: `docs/USER_GUIDE.md`
-- ☁️ **Cloud Deployment**: `CLOUD_DEPLOYMENT_GUIDE.md`
 
 ## Citation
 
 If you use TaxoConserv in your research, please cite:
 
 ```
-TaxoConserv: Conservation Score Analysis Platform for Taxonomic Groups
+TaxoConserv: A Web-Based Platform for Statistical Analysis and Visualization of Evolutionary Conservation Scores Across Taxonomic Classifications
 Author: Can Sevilmiş
 Year: 2025
 URL: https://github.com/Bilmem2/TaxoConserv
