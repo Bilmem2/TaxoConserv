@@ -21,6 +21,14 @@ pip install -r requirements.txt
 python taxoconserv.py --input data.csv --score phyloP --group taxon
 ```
 
+### Web Interface (Recommended)
+```bash
+streamlit run web_taxoconserv.py
+```
+Open browser to `http://localhost:8501`
+
+**Or use the live demo:** https://taxoconserv.streamlit.app/
+
 ## Features
 
 - 🌐 **Web Interface**: 24/7 accessible at https://taxoconserv.streamlit.app/
