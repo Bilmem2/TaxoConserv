@@ -47,7 +47,38 @@ output/
 *.tmp
 *.log
 
-# Test coverage
+# Test coverage files
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Development and testing files
+test_*.py
+*_test.py
+integration_test.py
+
+# Local deployment scripts
+start_*.bat
+start_*.ps1
+Start-*.ps1
+auto_start_service.py
+launch_web_interface.py
+
+# Large datasets (keep small examples only)
+*_large_dataset.csv
+*.csv
+!data/example_*.csv
+!data/testdata_*.csv
+
+# Multiple requirements files (keep main one)
+requirements-*.txt
+!requirements.txt
+
+# Environment files
+environment.yml
+
+# Jupyter notebooks
+*.ipynb
 .coverage
 htmlcov/
 
