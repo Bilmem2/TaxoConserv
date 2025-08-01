@@ -38,85 +38,25 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Output files (but keep example outputs)
-output/
-!output/.gitkeep
-!output/example/
+# Output files
+output/*.png
+output/*.pdf
+output/*.html
 
 # Temporary files
 *.tmp
 *.log
+temp_*.vcf
+temp_*.csv
 
 # Test coverage files
 .coverage
 htmlcov/
 .pytest_cache/
 
-# Development and testing files
-test_*.py
-*_test.py
-integration_test.py
-
-# Local deployment scripts
-start_*.bat
-start_*.ps1
-Start-*.ps1
-auto_start_service.py
-launch_web_interface.py
-
 # Large datasets (keep small examples only)
 *_large_dataset.csv
-*.csv
-!data/example_*.csv
-!data/testdata_*.csv
-
-# Multiple requirements files (keep main one)
-requirements-*.txt
-!requirements.txt
-
-# Environment files
-environment.yml
 
 # Jupyter notebooks
 *.ipynb
-.coverage
-htmlcov/
-
-# Jupyter notebooks
 *.ipynb_checkpoints
-
-# Data files (except examples)
-data/*.csv
-data/*.tsv
-!data/example_*.csv
-!data/example_*.tsv
-
-# Test images and plots
-*.png
-*.pdf
-*.html
-test_*.png
-test_*.pdf
-test_*.html
-src/test_*.png
-src/test_*.pdf
-src/test_*.html
-output/*.png
-output/*.pdf
-output/*.html
-*CHANGELOG.md
-
-# Temporary test files
-temp_test_data.csv
-
-# Reports
-*.md
-CONSERVATION_SCORE_INTEGRATION_REPORT.md
-tests/README_*.md
-
-# Pycache (redundant, but explicit for subfolders)
-src/__pycache__/
-tests/__pycache__/
-
-# Docs
-docs/*.md
