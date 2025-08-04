@@ -24,6 +24,7 @@ wheels/
 
 # Virtual environments
 venv/
+.venv/
 env/
 ENV/
 
@@ -42,12 +43,18 @@ Thumbs.db
 output/*.png
 output/*.pdf
 output/*.html
+test_*.png
+test_*.pdf
 
 # Temporary files
 *.tmp
 *.log
 temp_*.vcf
 temp_*.csv
+
+# Cache and development
+.cache/
+.devcontainer/
 
 # Personal development files
 CHANGELOG.md
