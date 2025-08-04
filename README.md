@@ -135,8 +135,9 @@ limitations under the License.
 
 **Author**: Can Sevilmiş  
 **Email**: cansevilmiss@gmail.com  
-**LinkedIn**: cansevilmiss  
-🔗 **GitHub**: [Bilmem2/TaxoConserv](https://github.com/Bilmem2/TaxoConserv)
+**LinkedIn**: [linkedin.com/in/cansevilmiss](https://linkedin.com/in/cansevilmiss)  
+🔗 **GitHub**: [Bilmem2/TaxoConserv](https://github.com/Bilmem2/TaxoConserv)  
+📄 **DOI**: [10.5281/zenodo.16739840](https://doi.org/10.5281/zenodo.16739840)
 
 ---
 
