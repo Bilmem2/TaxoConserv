@@ -2,9 +2,9 @@
 
 🧬 **Computational Platform for Evolutionary Conservation Analysis**
 
-TaxoConserv is a bioinformatics tool designed for statistical analysis and visualization of evolutionary conservation scores. This project supports researchers and bioinformaticians in understanding conservation patterns across species.
+TaxoConserv is a bioinformatics tool designed for statistical analysis and visualization of evolutionary conservation scores. This student project supports researchers and bioinformaticians in understanding conservation patterns across species.
 
-## Features
+## 🚀 Features
 
 ### Core Analysis Modes
 - **📊 Taxonomic Conservation Analysis**: Statistical comparison across taxonomic classifications
@@ -54,14 +54,22 @@ TaxoConserv/
 │   ├── analysis.py              # Statistical analysis engine
 │   ├── visualization.py         # Plotting and visualization
 │   ├── performance_optimizer.py # Performance optimization
-│   └── ...
+│   ├── input_parser.py          # Data input handling
+│   ├── taxon_grouping.py        # Taxonomic classification
+│   ├── variant_analysis.py      # VCF variant processing
+│   ├── advanced_statistics.py   # Statistical computations
+│   ├── advanced_visualizations.py # Advanced plotting
+│   └── ...                      # Other modules
 ├── data/                        # Example datasets
-├── test_datasets/              # Comprehensive test data
+├── test_datasets/              # Test data
 ├── tests/                      # Unit tests
 ├── docs/                       # Documentation
 ├── taxoconserv.py             # CLI application
 ├── web_taxoconserv.py         # Web interface
-└── requirements.txt           # Dependencies
+├── requirements.txt           # Python dependencies
+├── environment.yml            # Conda environment
+├── Dockerfile                 # Container setup
+└── .gitignore                 # Git ignore rules
 ```
 
 ## 📊 Data Requirements
@@ -123,10 +131,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-## 📧 Contact
+## 👤 Contact
 
-**Can Sevilmiş** - Student Project  
-🔗 GitHub: [Bilmem2/TaxoConserv](https://github.com/Bilmem2/TaxoConserv)
+**Author**: Can Sevilmiş  
+**Email**: cansevilmiss@gmail.com  
+**LinkedIn**: cansevilmiss  
+🔗 **GitHub**: [Bilmem2/TaxoConserv](https://github.com/Bilmem2/TaxoConserv)
 
 ---
 
