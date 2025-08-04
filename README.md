@@ -8,11 +8,6 @@ TaxoConserv provides two analysis modes:
 
 **Web Interface**: https://taxoconserv.streamlit.app/
 
-## Usage
-
-### Web Interface
-Access the application at https://taxoconserv.streamlit.app/
-
 ### Command Line
 For programmatic use:
 ```bash
@@ -43,13 +38,3 @@ Python 3.8+, pandas, numpy, scipy, matplotlib, plotly, streamlit
 ## License
 
 Apache License 2.0 - Copyright (c) 2025 Can Sevilmiş
-
-## Citation
-
-```
-TaxoConserv: A Computational Platform for Statistical Analysis and Visualization 
-of Evolutionary Conservation Scores Across Taxonomic Classifications
-Author: Can Sevilmiş, Year: 2025
-URL: https://github.com/Bilmem2/TaxoConserv
-DOI: https://zenodo.org/records/16683583
-```
