@@ -1,22 +1,22 @@
-# TaxoConserv
+# 🍃 TaxoConserv
 
 🧬 **Computational Platform for Evolutionary Conservation Analysis**
 
 TaxoConserv is a bioinformatics tool designed for statistical analysis and visualization of evolutionary conservation scores. This student project supports researchers and bioinformaticians in understanding conservation patterns across species.
 
-## 🚀 Features
+## Features
 
 ### Core Analysis Modes
-- **📊 Taxonomic Conservation Analysis**: Statistical comparison across taxonomic classifications
-- **🧪 Variant Conservation Analysis**: Individual variant assessment from VCF files
-- **📈 Multi-Score Analysis**: Simultaneous analysis of multiple conservation metrics
+- **Taxonomic Conservation Analysis**: Statistical comparison across taxonomic classifications
+- **Variant Conservation Analysis**: Individual variant assessment from VCF files
+- **Multi-Score Analysis**: Simultaneous analysis of multiple conservation metrics
 
 ### Capabilities
-- **⚡ Performance Optimized**: Data sampling for large datasets (50K+ rows)
-- **📋 Statistical Testing**: Kruskal-Wallis, Mann-Whitney U, post-hoc comparisons
-- **🎨 Visualizations**: Box plots, violin plots, heatmaps, correlation matrices
-- **📁 Flexible Input**: CSV/TSV, VCF files with automatic format detection
-- **💾 Export Options**: CSV, JSON, PNG, HTML formats
+- **Performance Optimized**: Data sampling for large datasets (50K+ rows)
+- **Statistical Testing**: Kruskal-Wallis, Mann-Whitney U, post-hoc comparisons
+- **Visualizations**: Box plots, violin plots, heatmaps, correlation matrices
+- **Flexible Input**: CSV/TSV, VCF files with automatic format detection
+- **Export Options**: CSV, JSON, PNG, HTML formats
 
 ### Conservation Metrics Supported
 - PhyloP scores
@@ -24,7 +24,7 @@ TaxoConserv is a bioinformatics tool designed for statistical analysis and visua
 - phastCons scores
 - Custom conservation metrics
 
-## 🌐 Quick Start
+## Quick Start
 
 ### Web Interface (Recommended)
 Access the interactive web application:
@@ -84,7 +84,7 @@ TaxoConserv/
 - **Required**: Conservation scores in INFO field
 - **Supported**: Standard VCF format with custom INFO tags
 
-## 🔧 Performance Features
+## Performance Features
 
 - **Smart Sampling**: Automatic data sampling for datasets >10K rows
 - **Memory Optimization**: Efficient processing of large files
@@ -106,13 +106,13 @@ The `test_datasets/` directory includes test data:
 - Large datasets (50K+ rows) for stress testing
 - Edge cases and validation scenarios
 
-## 🛠️ Requirements
+## Requirements
 
 - **Python**: 3.8+
 - **Core Libraries**: pandas, numpy, scipy, matplotlib, plotly, streamlit
 - **Optional**: duckdb (for large dataset optimization)
 
-## 📄 License
+## ⚖️ License
 
 ```
 Apache License 2.0
