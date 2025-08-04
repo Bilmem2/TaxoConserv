@@ -642,7 +642,8 @@ def create_advanced_visualization_ui(data: pd.DataFrame, score_column: str,
                                        title=f"Enhanced Violin Plot - {score_column.replace('_', ' ').title()}")
                     else:
                         fig, ax = plt.subplots(figsize=(10, 6))
-                        sns.violinplot(data=data, x=group_column, y=score_column, ax=ax)
+                        sns.violinplot(data=data, x=group_column, y=score_column, 
+                                     hue=group_column, legend=False, ax=ax)
                         ax.set_title(f"Enhanced Violin Plot - {score_column.replace('_', ' ').title()}")
                 
                 # Apply theme if figure was created

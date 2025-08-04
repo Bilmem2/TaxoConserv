@@ -23,9 +23,19 @@ COLOR_PALETTES = {
     "colorblind": "colorblind"
 }
 
-def get_palette_for_groups(palette_name, n_groups):
+def get_palette_for_groups(palette_name_or_colors, n_groups: int) -> list:
+    """Get color palette for the specified number of groups."""
     try:
-        return sns.color_palette(palette_name, n_groups)
+        if isinstance(palette_name_or_colors, list):
+            colors = palette_name_or_colors
+        else:
+            colors = sns.color_palette(palette_name_or_colors, n_groups)
+        
+        # Ensure we have enough colors
+        while len(colors) < n_groups:
+            colors.extend(colors)
+        
+        return colors[:n_groups]
     except Exception:
         return sns.color_palette("Set3", n_groups)
 

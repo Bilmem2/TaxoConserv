@@ -4,6 +4,7 @@ TaxoConserv - Conservation Score Detection and Utilities
 """
 
 from typing import Dict, List
+import pandas as pd
 
 # Conservation Score Detection and Description Dictionary
 CONSERVATION_SCORE_PATTERNS = {
@@ -51,6 +52,10 @@ def detect_conservation_scores(data) -> Dict[str, str]:
     """
     detected_scores = {}
     for col in data.columns:
+        # Only consider numeric columns for conservation scores
+        if not pd.api.types.is_numeric_dtype(data[col]):
+            continue
+            
         col_lower = col.lower()
         # Check for exact matches first
         if col in CONSERVATION_SCORE_PATTERNS:

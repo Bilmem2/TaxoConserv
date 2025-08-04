@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-TaxoConserv - Analysis Module
+TaxoConserv - Statistical Analysis Module
 
-İstatistiksel analiz fonksiyonları burada yer alır.
+Copyright 2025 Can Sevilmiş
+Licensed under Apache License 2.0
+For research and educational purposes only.
 """
 
 import numpy as np

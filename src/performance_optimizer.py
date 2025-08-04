@@ -167,24 +167,62 @@ def cached_statistical_analysis(data_hash: str, score_column: str, group_column:
 @streamlit_cache_data(ttl=600)  # Cache for 10 minutes
 @performance_timer
 def cached_data_processing(file_content: bytes, file_type: str) -> pd.DataFrame:
-    """Cached data loading and processing"""
+    """Cached data loading and processing with robust error handling"""
     import io
     
     try:
+        # Create BytesIO object from file content
+        file_buffer = io.BytesIO(file_content)
+        
+        # Try to read with different methods based on file type
         if file_type == 'csv':
-            data = pd.read_csv(io.BytesIO(file_content))
+            try:
+                # First try with automatic delimiter detection
+                data = pd.read_csv(file_buffer)
+            except Exception as e1:
+                # Reset buffer position and try with semicolon separator
+                file_buffer.seek(0)
+                try:
+                    data = pd.read_csv(file_buffer, sep=';')
+                except Exception as e2:
+                    # Reset buffer position and try with tab separator
+                    file_buffer.seek(0)
+                    data = pd.read_csv(file_buffer, sep='\t')
+                    
         elif file_type == 'tsv':
-            data = pd.read_csv(io.BytesIO(file_content), sep='\t')
+            try:
+                data = pd.read_csv(file_buffer, sep='\t')
+            except Exception as e1:
+                # Fallback to comma separator
+                file_buffer.seek(0)
+                data = pd.read_csv(file_buffer, sep=',')
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
+        
+        # Validate that we have data
+        if data is None or data.empty:
+            raise ValueError("No data could be parsed from file")
+            
+        # Check if we have any columns
+        if len(data.columns) == 0:
+            raise ValueError("No columns found in file")
         
         # Basic data cleaning
         data = data.dropna(axis=1, how='all')  # Remove empty columns
         
+        # Remove unnamed columns that are likely index columns
+        data = data.loc[:, ~data.columns.str.contains('^Unnamed')]
+        
+        # Final validation
+        if data.empty:
+            raise ValueError("Data is empty after cleaning")
+            
+        logger.info(f"Successfully processed file: {len(data)} rows, {len(data.columns)} columns")
         return data
         
     except Exception as e:
         logger.error(f"Error processing file: {e}")
+        # Re-raise the exception so the calling code can handle fallback
         raise
 
 

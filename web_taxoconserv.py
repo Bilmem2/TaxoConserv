@@ -1,7 +1,37 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-TaxoConserv Web Interface
-A Streamlit-based web application for taxonomic conservation analysis
+TaxoConserv - Taxonomic Conservation Score Analysis Platform
+Web Interface Module
+
+Copyright 2025 Can Sevilmiş
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+DISCLAIMER:
+This software is provided "AS IS" and any express or implied warranties,
+including, but not limited to, the implied warranties of merchantability
+and fitness for a particular purpose are disclaimed. In no event shall
+the copyright holder or contributors be liable for any direct, indirect,
+incidental, special, exemplary, or consequential damages (including, but
+not limited to, procurement of substitute goods or services; loss of use,
+data, or profits; or business interruption) however caused and on any
+theory of liability, whether in contract, strict liability, or tort
+(including negligence or otherwise) arising in any way out of the use
+of this software, even if advised of the possibility of such damage.
+
+For research and educational purposes only. Not intended for clinical or
+diagnostic use. Users are responsible for validating results and ensuring
+compliance with applicable regulations and ethical guidelines.
 
 Usage:
     streamlit run web_taxoconserv.py
@@ -276,6 +306,19 @@ def create_local_visualization(data, score_column, taxon_column, plot_type, colo
         return None, None
 
 def main():
+    # Suppress tornado websocket warnings
+    import logging
+    logging.getLogger('tornado.websocket').setLevel(logging.ERROR)
+    logging.getLogger('asyncio').setLevel(logging.ERROR)
+    
+    # Configure Streamlit page - MUST be first Streamlit command
+    st.set_page_config(
+        page_title="TaxoConserv - Conservation Score Analysis",
+        page_icon="🌿",
+        layout="centered",  # Centered layout for better readability
+        initial_sidebar_state="expanded"
+    )
+    
     # Academic-focused welcome header - simplified HTML
     st.markdown("""
 <div style="background: linear-gradient(135deg, #6e9c6b, #9fb97f, #a8c98a); color: white; border-radius: 15px; padding: 2rem; margin-bottom: 2rem;">
@@ -291,7 +334,7 @@ def main():
       📖 Documentation
     </a>
     <span style="background: rgba(255,255,255,0.1); padding: 0.6rem 1.2rem; border-radius: 8px;">
-      v1.0
+      v2.0.0
     </span>
   </div>
   
@@ -307,6 +350,29 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
+    # Apply dynamic layout based on user preference
+    layout_mode = st.session_state.get('layout_mode', 'Centered (Optimized)')
+    
+    if layout_mode == "Wide (Full Screen)":
+        st.markdown("""
+        <style>
+        .block-container {max-width: 95% !important; padding: 1rem 2rem;}
+        </style>
+        """, unsafe_allow_html=True)
+    elif layout_mode == "Compact (Minimal)":
+        st.markdown("""
+        <style>
+        .block-container {max-width: 900px !important; padding: 0.5rem 1rem;}
+        .stColumns {gap: 0.5rem;}
+        </style>
+        """, unsafe_allow_html=True)
+    else:  # Centered (Optimized) - Default
+        st.markdown("""
+        <style>
+        .block-container {max-width: 1200px !important; padding: 1rem 1.5rem;}
+        </style>
+        """, unsafe_allow_html=True)
+
     # Tab sistemi ekleme - Conservation analysis ve Variant analysis
     tab1, tab2 = st.tabs(["🧬 Taxonomic Conservation Analysis", "🔬 Variant Conservation Analysis"])
     
@@ -319,7 +385,7 @@ def main():
         run_variant_analysis()
 
 def run_taxonomic_analysis():
-    """Mevcut taxonomic conservation analysis interface"""
+    """Taxonomic conservation analysis interface"""
     st.subheader("🧬 Taxonomic Conservation Analysis")
     
     # Sidebar configuration
@@ -333,7 +399,8 @@ def run_taxonomic_analysis():
     uploaded_file = st.sidebar.file_uploader(
         "Upload Conservation Data",
         type=['csv', 'tsv'],
-        help="Upload a CSV or TSV file containing conservation scores and taxonomic groups"
+        help="Upload a CSV or TSV file containing conservation scores and taxonomic groups",
+        key="main_file_uploader"
     )
     
     # Sample data button
@@ -359,10 +426,42 @@ def run_taxonomic_analysis():
         - **Use**: Testing & demonstration of taxonomic analysis
         """)
     
-    # Reset button
-    if st.sidebar.button("🔄 Reset", help="Clear all selections and restart", key="taxonomic_reset_button"):
+    # Add legal/about information
+    with st.sidebar.expander("⚖️ Legal & About", expanded=False):
+        st.markdown("""
+        **TaxoConserv v2.0.0**
+        
+        **Copyright © 2025 Can Sevilmiş**
+        
+        Licensed under Apache License 2.0
+        
+        **DISCLAIMER**: This software is provided "AS IS" without warranty. 
+        For research and educational purposes only. Not intended for clinical 
+        or diagnostic use. Users are responsible for validating results.
+        
+        **GitHub**: [TaxoConserv Repository](https://github.com/Bilmem2/TaxoConserv)
+        """)
+    
+    # Reset button with improved functionality
+    if st.sidebar.button("🔄 Reset", help="Clear all data, files and restart from scratch", key="taxonomic_reset_button"):
+        # Clear all session state completely (including uploaded files)
         for key in list(st.session_state.keys()):
             del st.session_state[key]
+        
+        # Clear Streamlit cache
+        try:
+            st.cache_data.clear()
+        except:
+            pass
+        
+        # Force all file uploaders to reset by clearing their specific keys
+        file_uploader_keys = ["main_file_uploader", "vcf_file_uploader", "conservation_db_uploader"]
+        for file_key in file_uploader_keys:
+            if file_key in st.session_state:
+                del st.session_state[file_key]
+            
+        # Show success message and force complete reload
+        st.sidebar.success("✅ Application reset completely! All files and data cleared.")
         st.rerun()
     
     # Load data
@@ -390,184 +489,68 @@ def run_taxonomic_analysis():
     # File upload handling
     elif uploaded_file is not None:
         try:
+            # Reset file pointer to ensure proper reading
+            uploaded_file.seek(0)
+            
+            # Read file based on extension with proper encoding
             if uploaded_file.name.endswith('.csv'):
-                data = pd.read_csv(uploaded_file)
+                data = pd.read_csv(uploaded_file, encoding='utf-8')
+            elif uploaded_file.name.endswith('.tsv'):
+                data = pd.read_csv(uploaded_file, sep='\t', encoding='utf-8')
             else:
-                data = pd.read_csv(uploaded_file, sep='\t')
-            
-            st.sidebar.success(f"✅ File '{uploaded_file.name}' loaded successfully!")
-            
-            # Auto-detect columns
-            if 'taxon_group' in data.columns:
-                st.session_state['group_column'] = 'taxon_group'
-            else:
-                categorical_cols = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
-                if categorical_cols:
-                    st.session_state['group_column'] = categorical_cols[0]
-            
-            # Detect conservation scores
-            detected_scores = detect_conservation_scores(data)
-            if detected_scores:
-                num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
-                prioritized_scores = prioritize_conservation_scores(num_cols, detected_scores)
-                st.session_state['score_column'] = prioritized_scores[0]
-            else:
-                num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
-                if num_cols:
-                    st.session_state['score_column'] = num_cols[0]
-            
-        except Exception as e:
-            st.sidebar.error(f"❌ Error loading file: {e}")
-    
-    # Main interface
-    if data is not None:
-        # Configuration sidebar
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("🏷️ Analysis Configuration")
-        
-        # Group column selection
-        group_options = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
-        if not group_options:
-            group_options = list(data.columns)
-        
-        group_column = st.sidebar.selectbox(
-            "Grouping Column",
-            options=group_options,
-            index=group_options.index(st.session_state.get('group_column', group_options[0])) if st.session_state.get('group_column') in group_options else 0,
-            help="Select column for taxonomic grouping"
-        )
-        
-        # Score column selection
-        score_options = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
-        if score_options:
-            score_column = st.sidebar.selectbox(
-                "Conservation Score Column",
-                options=score_options,
-                index=score_options.index(st.session_state.get('score_column', score_options[0])) if st.session_state.get('score_column') in score_options else 0,
-                help="Select conservation score to analyze"
-            )
-        else:
-            st.sidebar.error("No numeric columns found for analysis!")
-            return
-        
-        # Visualization options
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("🎨 Visualization")
-        
-        plot_type = st.sidebar.selectbox(
-            "Plot Type",
-            options=["boxplot", "violin", "histogram", "swarm", "kde"],
-            help="Select visualization type"
-        )
-        
-        color_palette = st.sidebar.selectbox(
-            "Color Palette",
-            options=["Set1", "Set2", "Set3", "tab10", "viridis"],
-            index=2
-        )
-        
-        interactive_mode = st.sidebar.checkbox(
-            "Interactive Plots",
-            value=False,
-            help="Generate interactive plots with Plotly"
-        )
-        
-        # Analysis button
-        if st.sidebar.button("▶️ Run Analysis", type="primary", key="simple_analysis_button"):
-            # Data summary
-            st.subheader("📊 Data Summary")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Rows", len(data))
-            with col2:
-                st.metric("Groups", data[group_column].nunique())
-            with col3:
-                st.metric("Score Range", f"{data[score_column].min():.2f} - {data[score_column].max():.2f}")
-            with col4:
-                st.metric("Missing Values", data[score_column].isnull().sum())
-            
-            # Group statistics
-            st.subheader("📋 Group Statistics")
-            group_stats = data.groupby(group_column)[score_column].agg(['count', 'mean', 'std', 'min', 'max']).round(3)
-            st.dataframe(group_stats, use_container_width=True)
-            
-            # Statistical analysis
-            st.subheader("🧮 Statistical Analysis")
-            try:
-                from src.analysis import perform_statistical_analysis
-                stats_results = perform_statistical_analysis(data, score_column, group_column)
+                st.sidebar.error("❌ Unsupported file type! Only CSV or TSV allowed.")
+                return
                 
-                if stats_results:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Kruskal-Wallis H", f"{stats_results['h_statistic']:.4f}")
-                        st.metric("p-value", f"{stats_results['p_value']:.6f}")
-                    with col2:
-                        significance = "✅ Significant" if stats_results['significant'] else "❌ Not Significant"
-                        st.metric("Result", significance)
-                        st.metric("Groups Compared", stats_results['n_groups'])
-                        
-            except Exception as e:
-                st.warning(f"Statistical analysis not available: {e}")
-            
-            # Visualization
-            st.subheader("📈 Visualization")
+        except UnicodeDecodeError:
             try:
-                # Create interactive plots with plotly (always use plotly for simplicity)
-                if plot_type == "boxplot":
-                    fig = px.box(data, x=group_column, y=score_column, 
-                               color=group_column, color_discrete_sequence=px.colors.qualitative.Set3,
-                               title=f"{score_column} by {group_column}")
-                elif plot_type == "violin":
-                    fig = px.violin(data, x=group_column, y=score_column, 
-                                  color=group_column, color_discrete_sequence=px.colors.qualitative.Set3,
-                                  title=f"{score_column} Distribution by {group_column}")
-                elif plot_type == "histogram":
-                    fig = px.histogram(data, x=score_column, color=group_column, 
-                                     color_discrete_sequence=px.colors.qualitative.Set3,
-                                     title=f"{score_column} Histogram by {group_column}")
-                elif plot_type == "swarm":
-                    fig = px.strip(data, x=group_column, y=score_column, 
-                                 color=group_column, color_discrete_sequence=px.colors.qualitative.Set3,
-                                 title=f"{score_column} by {group_column}")
-                elif plot_type == "kde":
-                    # Create density plot for each group
-                    fig = go.Figure()
-                    colors = px.colors.qualitative.Set3
-                    for i, group in enumerate(data[group_column].unique()):
-                        group_data = data[data[group_column] == group][score_column]
-                        fig.add_trace(go.Histogram(
-                            x=group_data, 
-                            name=group, 
-                            histnorm='probability density',
-                            opacity=0.7,
-                            marker_color=colors[i % len(colors)]
-                        ))
-                    fig.update_layout(title=f"{score_column} Density by {group_column}")
+                # Try with different encoding if UTF-8 fails
+                uploaded_file.seek(0)
+                if uploaded_file.name.endswith('.csv'):
+                    data = pd.read_csv(uploaded_file, encoding='latin-1')
                 else:
-                    fig = px.scatter(data, x=group_column, y=score_column, 
-                                   color=group_column, color_discrete_sequence=px.colors.qualitative.Set3,
-                                   title=f"{score_column} by {group_column}")
-                
-                fig.update_layout(xaxis_title=group_column, yaxis_title=score_column)
-                st.plotly_chart(fig, use_container_width=True)
-                    
+                    data = pd.read_csv(uploaded_file, sep='\t', encoding='latin-1')
             except Exception as e:
-                st.error(f"Visualization error: {e}")
-                st.info("💡 Try using a different plot type or check your data format.")
+                st.sidebar.error(f"❌ Encoding error: {e}")
+                return
+        except Exception as e:
+            st.sidebar.error(f"❌ Error reading file: {e}")
+            return
             
-            # Data export
-            st.subheader("💾 Export Data")
-            csv_data = data.to_csv(index=False)
-            st.download_button(
-                label="📥 Download Data as CSV",
-                data=csv_data,
-                file_name=f"conservation_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
+        try:
+            # Check if data was loaded successfully
+            if data is not None and not data.empty and len(data.columns) > 0:
+                st.sidebar.success(f"✅ File '{uploaded_file.name}' loaded successfully!")
+                st.session_state['file_loaded'] = True
+                
+                # Auto-detect columns
+                if 'taxon_group' in data.columns:
+                    st.session_state['group_column'] = 'taxon_group'
+                else:
+                    categorical_cols = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
+                    if categorical_cols:
+                        st.session_state['group_column'] = categorical_cols[0]
+                
+                # Detect conservation scores
+                detected_scores = detect_conservation_scores(data)
+                if detected_scores:
+                    num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+                    prioritized_scores = prioritize_conservation_scores(num_cols, detected_scores)
+                    st.session_state['score_column'] = prioritized_scores[0]
+                    st.session_state['detected_conservation_scores'] = detected_scores
+                else:
+                    num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+                    if num_cols:
+                        st.session_state['score_column'] = num_cols[0]
+            else:
+                st.sidebar.error("❌ File appears to be empty or has no readable columns.")
+                data = None
+                
+        except Exception as e:
+            st.sidebar.error(f"❌ Error processing file data: {e}")
+            data = None
     
-    else:
+    # Main interface - Welcome or Analysis
+    if data is None:
         # Welcome interface
         st.markdown("""
         ### Welcome to Taxonomic Conservation Analysis
@@ -607,94 +590,6 @@ def run_taxonomic_analysis():
                 'phastCons_score': [0.892, 0.734, 0.812]
             })
             st.dataframe(sample_data, use_container_width=True)
-    
-    data = None
-    # Reset flag'ini kontrol et - eğer reset yapıldıysa dosya yüklemeyi atla
-    if st.session_state.get('uploaded_file_cleared', False):
-        # Reset flag'ini temizle
-        st.session_state['uploaded_file_cleared'] = False
-        uploaded_file = None  # Dosyayı zorla temizle
-    
-    # Demo veri flag'i varsa ve True ise demo veriyi yükle
-    if st.session_state.get('demo_loaded', False) == True:
-        from src.input_parser import create_demo_data
-        data = create_demo_data()
-        st.sidebar.success("✅ Demo data loaded successfully!")
-        st.session_state['group_column'] = 'taxon_group'
-        # Detect conservation scores in demo data
-        detected_scores = detect_conservation_scores(data)
-        if detected_scores:
-            # Prioritize conservation scores
-            num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
-            prioritized_scores = prioritize_conservation_scores(num_cols, detected_scores)
-            st.session_state['score_column'] = prioritized_scores[0]
-            st.session_state['detected_conservation_scores'] = detected_scores
-        else:
-            st.session_state['score_column'] = 'conservation_score'
-    # Dosya yüklenirse veri oku - ama sadece reset yapılmadıysa
-    elif uploaded_file is not None and not st.session_state.get('uploaded_file_cleared', False):
-        try:
-            start_time = time.time()
-            
-            # Use cached data processing for better performance
-            if MODULES_AVAILABLE:
-                file_content = uploaded_file.read()
-                file_type = 'csv' if uploaded_file.name.endswith('.csv') else 'tsv'
-                data = cached_data_processing(file_content, file_type)
-                
-                # Optimize DataFrame memory usage
-                original_memory = DataOptimizer.get_memory_usage(data)
-                data = DataOptimizer.optimize_dataframe(data)
-                optimized_memory = DataOptimizer.get_memory_usage(data)
-                
-                # Optimize for large datasets with DuckDB
-                data = optimize_large_dataset(data)
-                
-                # Record performance metrics
-                load_time = time.time() - start_time
-                performance_monitor.record_metric('data_load_time', load_time)
-                
-                # Silent memory optimization - no user notification needed
-            else:
-                # Fallback without caching
-                if uploaded_file.name.endswith('.csv'):
-                    data = pd.read_csv(uploaded_file)
-                elif uploaded_file.name.endswith('.tsv'):
-                    data = pd.read_csv(uploaded_file, sep='\t')
-                else:
-                    st.sidebar.error("❌ Unsupported file type! Only CSV or TSV allowed.")
-                    data = None
-            
-            if data is not None:
-                st.sidebar.success(f"✅ File '{uploaded_file.name}' loaded successfully!")
-                st.session_state['file_loaded'] = True
-                st.session_state['current_data'] = data  # Store for caching
-                
-                # Otomatik kolon seçimi (demo ile aynı mantık)
-                if 'taxon_group' in data.columns:
-                    st.session_state['group_column'] = 'taxon_group'
-                else:
-                    st.session_state['group_column'] = data.columns[0]
-                # Detect conservation scores and prioritize them
-                if MODULES_AVAILABLE:
-                    data_hash = cache.get_cache_key(data)
-                    detected_scores = cached_conservation_score_detection(data_hash, list(data.columns))
-                else:
-                    detected_scores = detect_conservation_scores(data)
-                    
-                num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
-                
-                if detected_scores:
-                    # Prioritize conservation scores
-                    prioritized_scores = prioritize_conservation_scores(num_cols, detected_scores)
-                    st.session_state['score_column'] = prioritized_scores[0]
-                    # Store detected scores for UI display
-                    st.session_state['detected_conservation_scores'] = detected_scores
-                else:
-                    st.session_state['score_column'] = num_cols[0] if num_cols else data.columns[0]
-        except Exception as e:
-            st.sidebar.error(f"❌ Error loading file: {e}")
-            data = None
     
     # Modern CSS styling with enhanced design
     st.markdown("""
@@ -872,35 +767,40 @@ def run_taxonomic_analysis():
 
     # All code referencing data, score_column, or group_column is strictly inside this block
     if data is not None:
-        st.sidebar.subheader("🏷️ Taxon Grouping")
+        # Single unified configuration sidebar
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📊 Analysis Configuration")
         
-        # Smart group column detection
-        group_column_options = []
-        for col in data.columns:
-            unique_count = data[col].nunique()
-            total_rows = len(data)
-            # Include if: not too many unique values (< 50% of rows) and not too few (> 1)
-            if 1 < unique_count < total_rows // 2 and unique_count <= 20:
-                group_column_options.append(col)
+        # Group column selection
+        group_options = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
+        if not group_options:
+            group_options = list(data.columns)
         
-        # If no good options found, include all non-numeric columns
-        if not group_column_options:
-            group_column_options = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
-        
-        # If still no options, include all columns
-        if not group_column_options:
-            group_column_options = list(data.columns)
-        
-        group_column_value = st.session_state.get('group_column')
-        group_column_index = group_column_options.index(group_column_value) if group_column_value in group_column_options else 0
         group_column = st.sidebar.selectbox(
-            "🏷️ Grouping Column",
-            options=group_column_options,
-            help="Select the column to use for taxon grouping (e.g. taxon_group, family, genus)",
-            key='group_column',
-            index=group_column_index
+            "Grouping Column",
+            options=group_options,
+            index=group_options.index(st.session_state.get('group_column', group_options[0])) if st.session_state.get('group_column') in group_options else 0,
+            help="Select column for taxonomic grouping",
+            key="main_group_column"
         )
-        with st.sidebar.expander("🧬 Advanced Grouping Options", expanded=False):
+        
+        # Score column selection
+        score_options = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+        if score_options:
+            score_column = st.sidebar.selectbox(
+                "Conservation Score Column",
+                options=score_options,
+                index=score_options.index(st.session_state.get('score_column', score_options[0])) if st.session_state.get('score_column') in score_options else 0,
+                help="Select conservation score to analyze",
+                key="main_score_column"
+            )
+        else:
+            st.sidebar.error("No numeric columns found for analysis!")
+            return
+        
+        # Optional Advanced Options
+        with st.sidebar.expander("🔬 Advanced Options", expanded=False):
+            # Advanced Grouping Options
             hierarchy_input = st.text_input(
                 "Hierarchy Columns (comma-separated)",
                 value="family,genus,species",
@@ -917,118 +817,47 @@ def run_taxonomic_analysis():
                 if ":" in line:
                     old, new = line.split(":", 1)
                     custom_map[old.strip().lower()] = new.strip()
-        st.sidebar.subheader("📊 Conservation Score Column")
         
-        # Get detected conservation scores
-        detected_scores = st.session_state.get('detected_conservation_scores', {})
+        # If no advanced options selected, set defaults
+        if 'hierarchy' not in locals():
+            hierarchy = None
+        if 'custom_map' not in locals():
+            custom_map = None
         
-        # Get all numeric columns and prioritize conservation scores
-        all_numeric_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
-        prioritized_options = prioritize_conservation_scores(all_numeric_cols, detected_scores)
-        
-        # Create options with descriptions for conservation scores
-        score_column_options = []
-        score_column_labels = []
-        
-        for col in prioritized_options:
-            if col in detected_scores:
-                # Add description for conservation scores
-                description = detected_scores[col]
-                label = f"{col} ({description})"
-                score_column_labels.append(label)
-                score_column_options.append(col)
-            else:
-                # Regular numeric column
-                score_column_labels.append(col)
-                score_column_options.append(col)
-        
-        # Get current selection
-        score_column_value = st.session_state.get('score_column')
-        score_column_index = score_column_options.index(score_column_value) if score_column_value in score_column_options else 0
-        
-        # Create selectbox with labels but return actual column names
-        selected_label = st.sidebar.selectbox(
-            "Select Conservation Score Column",
-            options=score_column_labels,
-            index=score_column_index,
-            help="Conservation scores are automatically detected and prioritized"
-        )
-        
-        # Get the actual column name from the selected label
-        score_column = score_column_options[score_column_labels.index(selected_label)]
-        st.session_state['score_column'] = score_column
-        
-        # Show description for selected score with enhanced info
-        if score_column in detected_scores:
-            st.sidebar.info(f"📋 **{score_column}**: {detected_scores[score_column]}")
-        elif score_column in all_numeric_cols:
-            st.sidebar.info(f"📋 **{score_column}**: Numeric score column")
-        
-        # Enhanced score information expander
-        with st.sidebar.expander("🧬 Score Information", expanded=False):
-            try:
-                plot_info = get_enhanced_plot_info(score_column)
-                
-                st.markdown(f"**Score Type:** {plot_info['detected_type'].title()}")
-                st.markdown(f"**Data Type:** {plot_info['score_type'].title()}")
-                
-                if plot_info['typical_range'] != 'varies' and plot_info['typical_range'] != 'unknown':
-                    st.markdown(f"**Typical Range:** {plot_info['typical_range']}")
-                
-                st.markdown(f"**Interpretation:** {plot_info['interpretation']}")
-                
-                st.markdown("**Recommended Plots:**")
-                for i, plot in enumerate(plot_info['plots']):
-                    if i == 0:
-                        st.markdown(f"• **{plot}** (Primary recommendation)")
-                    else:
-                        st.markdown(f"• {plot}")
-                        
-            except Exception:
-                st.markdown("*Score analysis not available*")
+        # Continue with rest of analysis based on selected mode...
         
         # Multi-score analysis expander (if multiple conservation scores detected)
         if len(detected_scores) > 1:
             with st.sidebar.expander("🔬 Multi-Score Analysis", expanded=False):
-                st.markdown("**Available Conservation Scores:**")
-                for col, desc in detected_scores.items():
-                    st.markdown(f"• **{col}**: {desc}")
+                # Show compact summary
+                st.markdown(f"**{len(detected_scores)} Conservation Scores Detected:**")
+                score_list = ', '.join([f"`{col}`" for col in detected_scores.keys()])
+                st.markdown(f"{score_list}")
                 
-                st.markdown("---")
-                st.markdown("**Correlation Analysis:**")
-                
-                # Calculate correlations between conservation scores
+                # Quick correlation summary (without heavy visualization)
                 conservation_cols = list(detected_scores.keys())
                 if len(conservation_cols) > 1:
                     corr_matrix = data[conservation_cols].corr(method='pearson')
                     
-                    # Create correlation heatmap
-                    import matplotlib.pyplot as plt
-                    import seaborn as sns
-                    from io import BytesIO
-                    import base64
+                    # Show just the highest and lowest correlations
+                    corr_values = []
+                    for i in range(len(conservation_cols)):
+                        for j in range(i+1, len(conservation_cols)):
+                            corr_val = corr_matrix.iloc[i, j]
+                            corr_values.append((conservation_cols[i], conservation_cols[j], corr_val))
                     
-                    fig, ax = plt.subplots(figsize=(6, 4))
-                    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, 
-                               square=True, fmt='.2f', cbar_kws={'shrink': 0.8})
-                    plt.title('Conservation Score Correlations', fontsize=12, fontweight='bold')
-                    plt.tight_layout()
+                    if corr_values:
+                        corr_values.sort(key=lambda x: abs(x[2]), reverse=True)
+                        highest_corr = corr_values[0]
+                        st.markdown(f"**Strongest correlation:** {highest_corr[0]} ↔ {highest_corr[1]} (r={highest_corr[2]:.2f})")
+                        
+                        if len(corr_values) > 1:
+                            lowest_corr = corr_values[-1]
+                            st.markdown(f"**Weakest correlation:** {lowest_corr[0]} ↔ {lowest_corr[1]} (r={lowest_corr[2]:.2f})")
                     
-                    # Convert to base64 for display
-                    buf = BytesIO()
-                    plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
-                    plt.close(fig)
-                    corr_img = base64.b64encode(buf.getvalue()).decode('utf-8')
-                    
-                    st.markdown(f"<img src='data:image/png;base64,{corr_img}' style='width:100%;border-radius:8px;'>", 
-                               unsafe_allow_html=True)
-                    
-                    # Summary statistics
-                    st.markdown("**Summary Statistics:**")
-                    summary_stats = data[conservation_cols].describe().round(3)
-                    st.dataframe(summary_stats, use_container_width=True)
+                    st.info("💡 Enable 'Multi-Score Analysis' in Fine Settings for detailed comparison")
                 else:
-                    st.info("Only one conservation score detected. Correlation analysis requires multiple scores.")
+                    st.info("Only one conservation score detected.")
         # Concise, English summary box
         n_rows = len(data)
         n_cols = len(data.columns)
@@ -1077,15 +906,31 @@ def run_taxonomic_analysis():
         if min_group_size < 3:
             small_groups = data[group_column].value_counts()
             small_groups = small_groups[small_groups < 3]
-            data_issues.append(f"Small groups (n<3): {', '.join([f'{g}({n})' for g, n in small_groups.items()])}")
+            # Limit display to first 5 small groups to avoid performance issues
+            small_groups_list = list(small_groups.items())
+            if len(small_groups_list) <= 5:
+                data_issues.append(f"Small groups (n<3): {', '.join([f'{g}({n})' for g, n in small_groups_list])}")
+            else:
+                # Show first 3 groups and count the rest
+                first_groups = ', '.join([f'{g}({n})' for g, n in small_groups_list[:3]])
+                remaining_count = len(small_groups_list) - 3
+                data_issues.append(f"Small groups (n<3): {first_groups} ...and {remaining_count} more")
         if n_groups < 2:
             data_issues.append("Need at least 2 groups for comparison")
             
         if data_issues:
-            with st.sidebar.expander("⚠️ Data Quality Issues", expanded=True):
-                for issue in data_issues:
-                    st.warning(issue)
-                st.info("💡 Consider cleaning your data or adjusting group mappings above.")
+            with st.sidebar.expander("⚠️ Data Quality Issues", expanded=False):
+                # Show only the count and most critical issues
+                st.warning(f"Found {len(data_issues)} data quality issue(s)")
+                if len(data_issues) <= 2:
+                    for issue in data_issues:
+                        st.caption(f"• {issue}")
+                else:
+                    # Show only first 2 issues and count the rest
+                    for issue in data_issues[:2]:
+                        st.caption(f"• {issue}")
+                    st.caption(f"• ...and {len(data_issues)-2} more issues")
+                st.info("💡 Review data quality before analysis")
         # --- Enhanced automatic plot suggestion logic ---
         def suggest_plot_types(score_column: str) -> tuple[list, str]:
             """Enhanced plot suggestion using advanced mapping system"""
@@ -1105,130 +950,831 @@ def run_taxonomic_analysis():
                     return ["boxplot"], "Boxplot is recommended by default for general score visualization."
 
         st.sidebar.markdown("---")
-        st.sidebar.subheader("🎨 Visualization Options")
+        st.sidebar.subheader("🎨 Visualization")
+        
         # Get recommended plot types and tooltip
         recommended_plots, tooltip_text = suggest_plot_types(score_column)
-        st.sidebar.markdown("**Recommended plot types (auto-detected):** " + ", ".join([f"`{plot}`" for plot in recommended_plots]))
+        
+        # Check if additional plot types are enabled (from Fine Settings)
+        show_additional_plots = st.session_state.get('show_additional_plots', False)
+        
+        # Create full plot options list if additional plots are enabled
+        all_plot_options = ["boxplot", "violin", "histogram", "swarm", "kde", "barplot", "scatter", "density"]
+        
+        if show_additional_plots:
+            available_plots = all_plot_options
+            plot_help_text = "All available plot types"
+            st.sidebar.markdown("**Available plot types (all options):** " + ", ".join([f"`{plot}`" for plot in all_plot_options]))
+        else:
+            available_plots = recommended_plots
+            plot_help_text = "Auto-selected based on your data type"
+            st.sidebar.markdown("**Recommended plot types (auto-detected):** " + ", ".join([f"`{plot}`" for plot in recommended_plots]))
         
         # Enhanced recommendation explanation
         with st.sidebar.expander("💡 Why these plots?", expanded=False):
             st.markdown(tooltip_text)
             
-            # Show plot-specific explanations
-            try:
-                for plot in recommended_plots:
-                    plot_explanation = score_plot_mapper.get_plot_explanation(score_column, plot)
-                    st.markdown(f"**{plot.title()}:** {plot_explanation}")
-            except:
-                pass
+            if show_additional_plots:
+                st.markdown("**Additional Plot Types Enabled:**")
+                st.markdown("- **boxplot**: Shows distribution quartiles and outliers")
+                st.markdown("- **violin**: Shows distribution shape and density")
+                st.markdown("- **histogram**: Shows frequency distribution")
+                st.markdown("- **swarm**: Shows individual data points")
+                st.markdown("- **kde**: Shows smooth density estimation")
+                st.markdown("- **barplot**: Shows group means with error bars")
+                st.markdown("- **scatter**: Shows individual points scattered")
+                st.markdown("- **density**: Shows overlapping density curves")
+            else:
+                # Show plot-specific explanations
+                try:
+                    for plot in recommended_plots:
+                        plot_explanation = score_plot_mapper.get_plot_explanation(score_column, plot)
+                        st.markdown(f"**{plot.title()}:** {plot_explanation}")
+                except:
+                    pass
 
-        # Show all plot options, recommended first
-        core_plot_options = ["boxplot", "violin", "swarm", "heatmap", "barplot", "histogram", "kde"]
-        advanced_plot_options = ["pairplot"]  # Removed correlation from main options
-        
-        all_plot_options = recommended_plots + [opt for opt in core_plot_options if opt not in recommended_plots] + advanced_plot_options
-        
-        # Get current plot type selection with key for session state
-        current_plot_type = st.session_state.get('plot_type', all_plot_options[0])
-        plot_type_index = all_plot_options.index(current_plot_type) if current_plot_type in all_plot_options else 0
-        
+        # Show plot options based on additional plots setting
         plot_type = st.sidebar.selectbox(
             "📈 Plot Type",
-            options=all_plot_options,
-            index=plot_type_index,
+            options=available_plots,
+            index=0,
             key='plot_type',
-            help="Recommended options are listed first."
+            help=plot_help_text
         )
         
-        palette_options = [
-            "Set1", "Set2", "Set3", "tab10", "Dark2", "Pastel1", "Accent",
-            "viridis", "plasma", "magma", "inferno", "cividis", "colorblind"
-        ]
-        
-        # Get current color palette selection with key for session state
-        current_palette = st.session_state.get('color_palette', 'Set3')
-        palette_index = palette_options.index(current_palette) if current_palette in palette_options else 2  # Set3 is at index 2
-        
-        color_palette = st.sidebar.selectbox(
-            "🎨 Color Palette",
-            options=palette_options,
-            index=palette_index,
-            key='color_palette',
-            help="Select color palette for visualizations"
-        )
-
-        # Palette preview
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as mpatches
-        import seaborn as sns
-        from io import BytesIO
-        import base64
-        def get_palette_colors(palette_name, n_colors=8):
-            try:
-                return sns.color_palette(palette_name, n_colors)
-            except Exception:
-                return sns.color_palette("Set3", n_colors)
-        preview_colors = get_palette_colors(color_palette, 8)
-        fig, ax = plt.subplots(figsize=(4, 0.5))
-        for i, color in enumerate(preview_colors):
-            ax.add_patch(mpatches.Rectangle((i, 0), 1, 1, color=color))
-        ax.set_xlim(0, 8)
-        ax.set_ylim(0, 1)
-        ax.axis('off')
-        buf = BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
-        plt.close(fig)
-        palette_img = base64.b64encode(buf.getvalue()).decode('utf-8')
-        st.sidebar.markdown(f"<b>Palette Preview:</b><br><img src='data:image/png;base64,{palette_img}' style='width:100%;height:30px;border-radius:6px;'>", unsafe_allow_html=True)
-        
-        # Interactive mode with session state
-        interactive_mode = st.sidebar.checkbox(
-            "🔄 Interactive Plots",
-            value=st.session_state.get('interactive_mode', False),
-            key='interactive_mode',
-            help="Generate interactive plots with Plotly"
-        )
-        
-        # Show statistics with session state
-        show_statistics = st.sidebar.checkbox(
-            "📊 Show Statistical Results",
-            value=st.session_state.get('show_statistics', True),
-            key='show_statistics',
-            help="Display statistical analysis results"
-        )
-        
-        # Advanced analysis options - simplified
+        # Analysis button
         st.sidebar.markdown("---")
-        st.sidebar.subheader("🔬 Advanced Analysis")
+        analysis_enabled = data is not None and group_column and score_column
         
-        # Only keep the most useful advanced features
-        use_multi_score = st.sidebar.checkbox(
-            "🔬 Multi-Score Analysis",
-            value=False,
-            help="Compare multiple conservation scores (PhyloP, GERP, etc.)"
-        )
+        # Get show_statistics setting outside of button to make it work immediately
+        show_statistics = st.session_state.get('show_statistics', True)
         
-        # Combine advanced stats into one expandable section
-        with st.sidebar.expander("🧮 Statistical Options", expanded=False):
-            advanced_stats_level = st.selectbox(
-                "Statistical Analysis Level",
-                options=["Basic", "Detailed", "Expert"],
-                index=0,
-                help="Choose the level of statistical analysis detail"
-            )
+        # Show a preview of what the Statistical Results option does
+        if not st.session_state.get('main_run_analysis_pressed', False):
+            if show_statistics:
+                st.info("📊 **Statistical Results Panel is ENABLED**\n\nAfter running analysis, you'll see:\n- Kruskal-Wallis test results\n- Group statistics\n- Post-hoc tests\n- Outlier detection\n- Normality tests")
+            else:
+                st.info("📈 **Plot-Only Mode is ENABLED**\n\nAfter running analysis, you'll see only the visualization in full width.")
+        
+        if st.sidebar.button("▶️ Run Analysis", type="primary", disabled=not analysis_enabled, key="main_run_analysis"):
+            # Set flag to indicate analysis has been run
+            st.session_state['main_run_analysis_pressed'] = True
+            # Get plot settings from Fine Settings or use defaults
+            plot_mode = st.session_state.get('fine_plot_mode', 'Interactive (Plotly)')
+            color_palette = st.session_state.get('color_palette', 'Set3')
+            chart_dpi = 150  # Fixed DPI value
+            interactive_mode = plot_mode == "Interactive (Plotly)"
             
-            # Set variables based on selected level
-            use_advanced_stats = advanced_stats_level in ["Detailed", "Expert"]
-            show_assumptions = advanced_stats_level == "Expert"
-            show_effect_sizes = advanced_stats_level in ["Detailed", "Expert"]
-            show_posthoc = advanced_stats_level == "Expert"
+            # Use optimized chart size for better display
+            chart_width, chart_height = 8, 6
+            
+            # Run the actual analysis
+            st.subheader("📊 Data Summary")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Rows", len(data))
+            with col2:
+                st.metric("Groups", data[group_column].nunique())
+            with col3:
+                st.metric("Score Range", f"{data[score_column].min():.2f} - {data[score_column].max():.2f}")
+            with col4:
+                st.metric("Missing Values", data[score_column].isnull().sum())
+            
+            # Group statistics
+            st.subheader("📈 Group Statistics")
+            group_stats = data.groupby(group_column)[score_column].agg(['count', 'mean', 'std', 'min', 'max']).round(6)
+            st.dataframe(group_stats, use_container_width=True)
+            
+            # Statistical analysis
+            st.subheader("🧮 Statistical Analysis")
+            try:
+                from src.analysis import perform_statistical_analysis
+                stats_results = perform_statistical_analysis(data, score_column, group_column)
+                
+                if stats_results:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Kruskal-Wallis H", f"{float(stats_results['h_statistic']):.6f}")
+                        st.metric("p-value", f"{float(stats_results['p_value']):.8f}")
+                    with col2:
+                        significance = "✅ Significant" if stats_results['significant'] else "❌ Not Significant"
+                        st.metric("Result", significance)
+                        st.metric("Groups Compared", stats_results['n_groups'])
+                        
+            except Exception as e:
+                st.warning(f"Statistical analysis not available: {e}")
+            
+            # Visualization with Smart Performance Optimization
+            st.subheader("🎨 Visualization")
+            
+            # Performance assessment and intelligent data sampling
+            n_rows = len(data)
+            n_groups = data[group_column].nunique()
+            
+            # Define performance thresholds
+            LARGE_DATASET_THRESHOLD = 10000
+            VERY_LARGE_DATASET_THRESHOLD = 50000
+            MAX_PLOT_POINTS = 5000
+            
+            # Smart data sampling for large datasets
+            plot_data = data.copy()
+            sampling_applied = False
+            performance_warning = False
+            
+            if n_rows > VERY_LARGE_DATASET_THRESHOLD:
+                # For very large datasets (>50k), show warning and use aggregated plots only
+                performance_warning = True
+                st.warning(f"""
+                ⚠️ **Large Dataset Detected ({n_rows:,} rows)**
+                
+                For optimal performance with datasets over {VERY_LARGE_DATASET_THRESHOLD:,} rows, we recommend:
+                - Using **statistical summaries** instead of individual data points
+                - **Aggregated visualizations** (barplot, histogram) perform better
+                - Avoid point-based plots (scatter, swarm) which may be slow
+                """)
+                
+                # Ask user preference for large datasets
+                plot_choice = st.radio(
+                    "Choose visualization approach:",
+                    options=["📊 Aggregated plots only (Recommended)", "📈 Sample data for faster plotting", "⚠️ Plot all data (may be slow)"],
+                    index=0,
+                    help="Aggregated plots show statistical summaries. Sampling uses a representative subset."
+                )
+                
+                if plot_choice.startswith("📈"):
+                    # Smart stratified sampling to maintain group representation
+                    sample_size = min(MAX_PLOT_POINTS, n_rows // 10)
+                    plot_data = data.groupby(group_column, group_keys=False).apply(
+                        lambda x: x.sample(min(len(x), sample_size // n_groups)) if len(x) > 0 else x
+                    ).reset_index(drop=True)
+                    sampling_applied = True
+                    st.info(f"📊 Using stratified sample: {len(plot_data):,} points (from {n_rows:,} total)")
+                elif plot_choice.startswith("📊"):
+                    # Force aggregated plot types only
+                    if plot_type in ["scatter", "swarm", "kde", "density"]:
+                        plot_type = "barplot"
+                        st.info("🔄 Switched to Bar Plot for better performance with large datasets")
+                
+            elif n_rows > LARGE_DATASET_THRESHOLD:
+                # For large datasets (10k-50k), offer sampling option
+                st.info(f"""
+                📊 **Medium-Large Dataset ({n_rows:,} rows)**
+                
+                Some plot types may render slowly. Consider using sampling for better performance.
+                """)
+                
+                if plot_type in ["scatter", "swarm"] and st.checkbox("🚀 Use data sampling for faster plotting", value=True, key="sampling_checkbox"):
+                    sample_size = min(MAX_PLOT_POINTS, n_rows // 5)
+                    plot_data = data.groupby(group_column, group_keys=False).apply(
+                        lambda x: x.sample(min(len(x), sample_size // n_groups)) if len(x) > 0 else x
+                    ).reset_index(drop=True)
+                    sampling_applied = True
+                    st.success(f"✅ Using sample: {len(plot_data):,} points for visualization")
+            
+            try:
+                # Create visualization with performance optimizations
+                import plotly.express as px
+                import plotly.graph_objects as go
+                import time
+                
+                # Start performance timer
+                viz_start_time = time.time()
+                
+                # Show progress for potentially slow operations
+                if len(plot_data) > 5000 or plot_type in ["kde", "density"]:
+                    progress_placeholder = st.empty()
+                    progress_placeholder.info("🎨 Creating visualization...")
+                
+                if interactive_mode:
+                    # Optimized interactive plots with plotly
+                    if plot_type == "boxplot":
+                        fig = px.box(plot_data, x=group_column, y=score_column, 
+                                   color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                   title=f"{score_column} by {group_column}")
+                    elif plot_type == "violin":
+                        # Optimize violin plots for large datasets
+                        if len(plot_data) > 10000:
+                            st.info("💡 Large dataset: Using box plot instead of violin for better performance")
+                            fig = px.box(plot_data, x=group_column, y=score_column, 
+                                       color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                       title=f"{score_column} Distribution by {group_column}")
+                        else:
+                            fig = px.violin(plot_data, x=group_column, y=score_column, 
+                                          color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                          title=f"{score_column} Distribution by {group_column}")
+                    elif plot_type == "histogram":
+                        # Optimize histogram bins for large datasets
+                        import numpy as np
+                        optimal_bins = min(50, max(10, int(np.sqrt(len(plot_data)))))
+                        fig = px.histogram(plot_data, x=score_column, color=group_column, 
+                                         color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                         title=f"{score_column} Histogram by {group_column}",
+                                         nbins=optimal_bins)
+                    elif plot_type == "swarm":
+                        # Limit swarm plot size and use strip plot for large data
+                        if len(plot_data) > 2000:
+                            st.info("💡 Large dataset: Using strip plot instead of swarm for better performance")
+                        fig = px.strip(plot_data, x=group_column, y=score_column, 
+                                     color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                     title=f"{score_column} by {group_column}")
+                    elif plot_type == "kde":
+                        # Optimized KDE with reduced resolution for large datasets
+                        fig = go.Figure()
+                        colors = getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3)
+                        
+                        import numpy as np
+                        from scipy.stats import gaussian_kde
+                        
+                        # Reduce KDE resolution for large datasets
+                        kde_resolution = 100 if len(plot_data) < 5000 else 50
+                        
+                        for i, group in enumerate(plot_data[group_column].unique()):
+                            group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
+                            if len(group_data) > 1:
+                                # Sample for KDE if too many points
+                                if len(group_data) > 1000:
+                                    group_data = group_data.sample(1000)
+                                
+                                # Calculate KDE with reduced resolution
+                                kde = gaussian_kde(group_data)
+                                x_range = np.linspace(group_data.min(), group_data.max(), kde_resolution)
+                                y_kde = kde(x_range)
+                                
+                                fig.add_trace(go.Scatter(
+                                    x=x_range,
+                                    y=y_kde,
+                                    mode='lines',
+                                    name=str(group),
+                                    line=dict(color=colors[i % len(colors)], width=3),
+                                    fill='tonexty' if i > 0 else 'tozeroy',
+                                    opacity=0.6
+                                ))
+                        
+                        fig.update_layout(
+                            title=f"{score_column} KDE (Kernel Density Estimation) by {group_column}",
+                            xaxis_title=score_column,
+                            yaxis_title="Density"
+                        )
+                    elif plot_type == "barplot":
+                        # Efficient aggregated bar plot (always fast)
+                        group_means = plot_data.groupby(group_column)[score_column].agg(['mean', 'std']).reset_index()
+                        fig = px.bar(group_means, x=group_column, y='mean', 
+                                   error_y='std',
+                                   color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                   title=f"{score_column} Mean by {group_column}")
+                    elif plot_type == "scatter":
+                        # Optimized scatter with opacity for overlapping points
+                        point_opacity = max(0.1, min(1.0, 500 / len(plot_data)))
+                        fig = px.scatter(plot_data, x=group_column, y=score_column, 
+                                       color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                       title=f"{score_column} Scatter by {group_column}",
+                                       opacity=point_opacity)
+                    elif plot_type == "density":
+                        # Optimized density with reduced bins
+                        fig = go.Figure()
+                        colors = getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3)
+                        import numpy as np
+                        optimal_bins = min(30, max(10, int(np.sqrt(len(plot_data) / n_groups))))
+                        
+                        for i, group in enumerate(plot_data[group_column].unique()):
+                            group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
+                            if len(group_data) > 1:
+                                fig.add_trace(go.Histogram(
+                                    x=group_data, 
+                                    name=str(group), 
+                                    histnorm='probability density',
+                                    opacity=0.6,
+                                    marker_color=colors[i % len(colors)],
+                                    nbinsx=optimal_bins
+                                ))
+                        fig.update_layout(title=f"{score_column} Density Distribution by {group_column}", barmode='overlay')
+                    else:
+                        fig = px.scatter(plot_data, x=group_column, y=score_column, 
+                                       color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                       title=f"{score_column} by {group_column}")
+                    
+                    # Update layout with optimal chart size
+                    fig.update_layout(
+                        xaxis_title=group_column, 
+                        yaxis_title=score_column,
+                        width=chart_width * 80,  # Optimized for better display
+                        height=chart_height * 80,
+                        title_font_size=14,
+                        font_size=11
+                    )
+                    
+                    # Clear progress indicator
+                    if len(plot_data) > 5000 or plot_type in ["kde", "density"]:
+                        progress_placeholder.empty()
+                    
+                    # Use container width for responsive design
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                else:
+                    # Optimized static plots with matplotlib
+                    import matplotlib.pyplot as plt
+                    import seaborn as sns
+                    
+                    plt.style.use('default')
+                    fig, ax = plt.subplots(figsize=(chart_width, chart_height), dpi=chart_dpi)
+                    
+                    if plot_type == "boxplot":
+                        sns.boxplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette)
+                    elif plot_type == "violin":
+                        if len(plot_data) > 10000:
+                            st.info("💡 Large dataset: Using box plot instead of violin for better performance")
+                            sns.boxplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette)
+                        else:
+                            sns.violinplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette)
+                    elif plot_type == "histogram":
+                        import numpy as np
+                        optimal_bins = min(50, max(10, int(np.sqrt(len(plot_data)))))
+                        for i, group in enumerate(plot_data[group_column].unique()):
+                            group_data = plot_data[plot_data[group_column] == group][score_column]
+                            ax.hist(group_data, alpha=0.7, label=group, bins=optimal_bins)
+                        ax.legend()
+                    elif plot_type == "swarm":
+                        # Use stripplot for large datasets
+                        sns.stripplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette, alpha=0.7)
+                    elif plot_type == "kde":
+                        for group in plot_data[group_column].unique():
+                            group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
+                            if len(group_data) > 1000:
+                                group_data = group_data.sample(1000)  # Sample for performance
+                            if len(group_data) > 1:
+                                sns.kdeplot(group_data, label=group, ax=ax)
+                        ax.legend()
+                    elif plot_type == "barplot":
+                        sns.barplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette, errorbar='sd')
+                    elif plot_type == "scatter":
+                        point_alpha = max(0.1, min(1.0, 500 / len(plot_data)))
+                        sns.stripplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette, size=8, alpha=point_alpha)
+                    elif plot_type == "density":
+                        for group in plot_data[group_column].unique():
+                            group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
+                            if len(group_data) > 1:
+                                sns.histplot(group_data, kde=True, stat="density", alpha=0.6, label=str(group), ax=ax, bins='auto')
+                        ax.legend()
+                    
+                    ax.set_title(f"{score_column} by {group_column}")
+                    ax.set_xlabel(group_column)
+                    ax.set_ylabel(score_column)
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+                    
+                    # Clear progress indicator
+                    if len(plot_data) > 5000 or plot_type in ["kde", "density"]:
+                        progress_placeholder.empty()
+                    
+                    st.pyplot(fig, use_container_width=True)
+                
+                # Performance summary
+                viz_time = time.time() - viz_start_time
+                if sampling_applied:
+                    st.caption(f"⚡ Visualization completed in {viz_time:.2f}s using {len(plot_data):,} sample points (from {n_rows:,} total)")
+                elif viz_time > 2:
+                    st.caption(f"🕐 Visualization completed in {viz_time:.2f}s")
+                
+                # Performance tips for future use
+                if performance_warning and not sampling_applied:
+                    with st.expander("💡 Performance Tips for Large Datasets", expanded=False):
+                        st.markdown("""
+                        **For faster visualization with large datasets:**
+                        
+                        1. **📊 Use aggregated plots**: Bar plots, histograms are always fast
+                        2. **🎯 Enable data sampling**: Maintains statistical patterns while improving speed
+                        3. **⚡ Avoid point-based plots**: Scatter and swarm plots slow down with many points
+                        4. **🔢 Consider statistical summaries**: Group statistics often more informative than individual points
+                        5. **📈 Interactive mode**: Plotly generally handles large data better than matplotlib
+                        """)
+                        
+            except Exception as e:
+                st.error(f"Visualization error: {e}")
+                st.info("💡 Try using a different plot type or enable data sampling for large datasets.")
+                
+                # Fallback: Offer simple statistical summary instead
+                if len(data) > LARGE_DATASET_THRESHOLD:
+                    st.markdown("### 📊 Statistical Summary (Fallback)")
+                    summary_stats = data.groupby(group_column)[score_column].agg(['count', 'mean', 'std', 'min', 'max']).round(4)
+                    st.dataframe(summary_stats, use_container_width=True)
+            
+            # Detailed Statistical Results Panel (if enabled)
+            if show_statistics and stats_results:
+                st.markdown("---")
+                st.markdown("""
+                <div style='background: linear-gradient(90deg, #1f77b4, #ff7f0e); padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
+                    <h2 style='color: white; margin: 0; text-align: center;'>📊 Detailed Statistical Analysis</h2>
+                    <p style='color: white; margin: 0.5rem 0 0 0; text-align: center; opacity: 0.9;'>Comprehensive statistical insights and tests</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Use columns layout for better organization
+                col1, col2 = st.columns([0.6, 0.4], gap="large")
+                
+                with col1:
+                    # Section 1: Kruskal-Wallis Details
+                    st.markdown("### 🧮 Kruskal-Wallis Test Results")
+                    
+                    # Create a nice info box for the main results
+                    significance_color = "success" if stats_results['significant'] else "warning"
+                    significance_icon = "✅" if stats_results['significant'] else "❌"
+                    significance_text = "Significant difference detected!" if stats_results['significant'] else "No significant difference found."
+                    
+                    st.markdown(f"""
+                    <div style='background-color: #f0f2f6; padding: 1rem; border-radius: 8px; border-left: 4px solid #1f77b4;'>
+                        <h4 style='margin: 0 0 0.5rem 0; color: #1f77b4;'>{significance_icon} Test Results</h4>
+                        <p style='margin: 0;'><strong>H-statistic:</strong> {float(stats_results['h_statistic']):.6f}</p>
+                        <p style='margin: 0;'><strong>p-value:</strong> {float(stats_results['p_value']):.8f}</p>
+                        <p style='margin: 0;'><strong>Degrees of freedom:</strong> {stats_results['n_groups'] - 1}</p>
+                        <p style='margin: 0.5rem 0 0 0; font-weight: bold;'>{significance_text}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if stats_results['significant']:
+                        st.info("💡 **Interpretation:** There are statistically significant differences between the groups (p < 0.05).")
+                    else:
+                        st.info("💡 **Interpretation:** The groups do not show statistically significant differences (p ≥ 0.05).")
+                    
+                    # Section 2: Post-hoc Dunn Test
+                    st.markdown("### 🔬 Post-hoc Analysis")
+                    with st.expander("Pairwise Group Comparisons (Dunn Test)", expanded=False):
+                        try:
+                            import scikit_posthocs as sp # type: ignore
+                            dunn_results = sp.posthoc_dunn(data, val_col=score_column, group_col=group_column, p_adjust='bonferroni')
+                            # Format the results for better display
+                            dunn_formatted = dunn_results.round(8)  # Round to 8 decimal places
+                            # Replace very small values with scientific notation
+                            dunn_formatted = dunn_formatted.applymap(lambda x: f"{x:.2e}" if x < 0.001 and x != 0 else f"{x:.6f}")
+                            st.dataframe(dunn_formatted, use_container_width=True)
+                            st.caption("📝 Values show p-values for pairwise comparisons (Bonferroni corrected). Lower values indicate stronger evidence of difference.")
+                        except ImportError:
+                            st.warning("⚠️ **scikit-posthocs** package is not installed.")
+                            st.code("pip install scikit-posthocs", language="bash")
+                        except Exception as e:
+                            st.error(f"Error running post-hoc test: {e}")
+                
+                with col2:
+                    # Section 3: Outlier Detection
+                    st.markdown("### 🔎 Data Quality Checks")
+                    
+                    with st.expander("Outlier Detection (IQR Method)", expanded=True):
+                        outlier_info = {}
+                        for group in data[group_column].unique():
+                            if pd.notna(group):
+                                vals = data[data[group_column] == group][score_column].dropna()
+                                q1 = vals.quantile(0.25)
+                                q3 = vals.quantile(0.75)
+                                iqr = q3 - q1
+                                lower = q1 - 1.5 * iqr
+                                upper = q3 + 1.5 * iqr
+                                outliers = vals[(vals < lower) | (vals > upper)]
+                                outlier_info[group] = len(outliers)
+                        
+                        outlier_df = pd.DataFrame.from_dict(outlier_info, orient='index', columns=['Outlier Count'])
+                        outlier_df.index.name = 'Group'
+                        st.dataframe(outlier_df, use_container_width=True)
+                        
+                        total_outliers = sum(outlier_info.values())
+                        if total_outliers > 0:
+                            st.warning(f"⚠️ Found **{total_outliers}** outliers across all groups")
+                        else:
+                            st.success("✅ No outliers detected in any group")
+                    
+                    # Section 4: Normality Test
+                    with st.expander("Normality Test (Shapiro-Wilk)", expanded=True):
+                        from scipy.stats import shapiro
+                        normality_results = {}
+                        for group in data[group_column].unique():
+                            if pd.notna(group):
+                                vals = data[data[group_column] == group][score_column].dropna()
+                                if len(vals) >= 3:
+                                    stat, pval = shapiro(vals)
+                                    is_normal = "Yes" if pval > 0.05 else "No"
+                                    normality_results[group] = {
+                                        'W-statistic': f"{stat:.6f}",
+                                        'p-value': f"{pval:.8f}",
+                                        'Normal?': is_normal
+                                    }
+                                else:
+                                    normality_results[group] = {
+                                        'W-statistic': 'N/A',
+                                        'p-value': 'N/A',
+                                        'Normal?': 'Too few samples'
+                                    }
+                        
+                        normality_df = pd.DataFrame(normality_results).T
+                        st.dataframe(normality_df, use_container_width=True)
+                        st.caption("📝 p > 0.05 suggests data follows normal distribution")
+            
+            # Enhanced Data Export Section
+            st.markdown("---")
+            st.markdown("""
+            <div style='background: linear-gradient(90deg, #28a745, #20c997); padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
+                <h2 style='color: white; margin: 0; text-align: center;'>💾 Export Results & Data</h2>
+                <p style='color: white; margin: 0.5rem 0 0 0; text-align: center; opacity: 0.9;'>Download analysis results in multiple formats</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Local imports for export functionality  
+            from datetime import datetime
+            import json
+            
+            # Create export tabs for better organization
+            export_tab1, export_tab2, export_tab3 = st.tabs(["📊 Analysis Results", "📈 Plots & Visualizations", "📋 Raw Data"])
+            
+            with export_tab1:
+                if stats_results:
+                    st.markdown("### Analysis Results Export")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**Main Statistical Results**")
+                        # Prepare main results data with proper formatting and JSON serialization
+                        main_results = {
+                            'analysis_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            'score_column': score_column,
+                            'group_column': group_column,
+                            'h_statistic': round(float(stats_results['h_statistic']), 6),
+                            'p_value': round(float(stats_results['p_value']), 8),
+                            'significant': bool(stats_results['significant']),
+                            'n_groups': int(stats_results['n_groups']),
+                            'degrees_of_freedom': int(stats_results['n_groups'] - 1)
+                        }
+                        
+                        # CSV export
+                        results_df = pd.DataFrame([main_results])
+                        csv_buffer = io.StringIO()
+                        results_df.to_csv(csv_buffer, index=False)
+                        st.download_button(
+                            label="📄 Download as CSV",
+                            data=csv_buffer.getvalue(),
+                            file_name=f"taxoconserv_main_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            key="main_results_csv"
+                        )
+                        
+                        # JSON export with proper serialization
+                        json_buffer = io.StringIO()
+                        import json
+                        json.dump(main_results, json_buffer, indent=2, ensure_ascii=False)
+                        st.download_button(
+                            label="📄 Download as JSON",
+                            data=json_buffer.getvalue(),
+                            file_name=f"taxoconserv_main_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                            mime="application/json",
+                            key="main_results_json"
+                        )
+                    
+                    with col2:
+                        st.markdown("**Group Statistics**")
+                        if 'stats_summary' in stats_results:
+                            group_stats = stats_results['stats_summary']
+                            
+                            # CSV export for group stats
+                            group_csv = io.StringIO()
+                            group_stats.to_csv(group_csv)
+                            st.download_button(
+                                label="📊 Download Group Stats CSV",
+                                data=group_csv.getvalue(),
+                                file_name=f"group_statistics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv",
+                                key="group_stats_csv"
+                            )
+                            
+                            # JSON export for group stats
+                            group_json = group_stats.reset_index().to_json(orient="records", indent=2)
+                            st.download_button(
+                                label="📊 Download Group Stats JSON",
+                                data=group_json,
+                                file_name=f"group_statistics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                mime="application/json",
+                                key="group_stats_json"
+                            )
+                else:
+                    st.info("Run analysis first to export statistical results.")
+            
+            with export_tab2:
+                st.markdown("### Plot & Visualization Export")
+                
+                if 'fig' in locals() and fig is not None:
+                    plot_mode = st.session_state.get('fine_plot_mode', 'Interactive (Plotly)')
+                    interactive_mode = plot_mode == "Interactive (Plotly)"
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**Interactive Plots (Plotly)**")
+                        if interactive_mode:
+                            # HTML export for interactive plots
+                            try:
+                                import plotly.io as pio
+                                html_buffer = io.StringIO()
+                                pio.write_html(fig, file=html_buffer, auto_open=False)
+                                html_str = html_buffer.getvalue()
+                                
+                                st.download_button(
+                                    label="🌐 Download Interactive Plot (HTML)",
+                                    data=html_str.encode('utf-8'),
+                                    file_name=f"conservation_plot_interactive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                                    mime="text/html",
+                                    key="plot_html"
+                                )
+                                st.caption("✨ HTML format preserves interactivity")
+                            except Exception as e:
+                                st.warning(f"Interactive plot export not available: {e}")
+                        else:
+                            st.info("Switch to Interactive mode in Fine Settings to export HTML plots")
+                    
+                    with col2:
+                        st.markdown("**Static Plots (Publication Quality)**")
+                        if not interactive_mode:
+                            from matplotlib.figure import Figure as MplFigure
+                            if isinstance(fig, MplFigure):
+                                # PNG export
+                                try:
+                                    buf_png = io.BytesIO()
+                                    fig.savefig(buf_png, format="png", bbox_inches='tight', dpi=300)
+                                    buf_png.seek(0)
+                                    
+                                    st.download_button(
+                                        label="🖼️ Download as PNG (High Quality)",
+                                        data=buf_png,
+                                        file_name=f"conservation_plot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                                        mime="image/png",
+                                        key="plot_png"
+                                    )
+                                except Exception as e:
+                                    st.warning(f"PNG export failed: {e}")
+                                
+                                # SVG export
+                                try:
+                                    buf_svg = io.BytesIO()
+                                    fig.savefig(buf_svg, format="svg", bbox_inches='tight')
+                                    buf_svg.seek(0)
+                                    
+                                    st.download_button(
+                                        label="📐 Download as SVG (Vector)",
+                                        data=buf_svg,
+                                        file_name=f"conservation_plot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.svg",
+                                        mime="image/svg+xml",
+                                        key="plot_svg"
+                                    )
+                                    st.caption("📐 SVG format is perfect for publications")
+                                except Exception as e:
+                                    st.warning(f"SVG export failed: {e}")
+                            else:
+                                st.info("Static plot export only available in Matplotlib mode")
+                        else:
+                            st.info("Switch to Static mode in Fine Settings to export PNG/SVG")
+                else:
+                    st.info("Run analysis first to export plots.")
+            
+            with export_tab3:
+                st.markdown("### Raw Data Export")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Original Dataset**")
+                    if data is not None:
+                        # Full dataset CSV
+                        csv_data = data.to_csv(index=False)
+                        st.download_button(
+                            label="📥 Download Full Dataset (CSV)",
+                            data=csv_data,
+                            file_name=f"conservation_analysis_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            key="full_data_csv"
+                        )
+                        
+                        # Excel export
+                        try:
+                            excel_buffer = io.BytesIO()
+                            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                                data.to_excel(writer, sheet_name='Data', index=False)
+                                if stats_results and 'stats_summary' in stats_results:
+                                    stats_results['stats_summary'].to_excel(writer, sheet_name='Group_Stats')
+                            
+                            st.download_button(
+                                label="📊 Download as Excel (XLSX)",
+                                data=excel_buffer.getvalue(),
+                                file_name=f"conservation_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="full_data_excel"
+                            )
+                        except ImportError:
+                            st.info("Install openpyxl for Excel export: `pip install openpyxl`")
+                        except Exception as e:
+                            st.warning(f"Excel export failed: {e}")
+                    else:
+                        st.info("No data loaded to export.")
+                
+                with col2:
+                    st.markdown("**Data Summary**")
+                    if data is not None:
+                        st.write(f"**Rows:** {len(data):,}")
+                        st.write(f"**Columns:** {len(data.columns)}")
+                        st.write(f"**Groups:** {data[group_column].nunique()}")
+                        st.write(f"**File size (estimated):** {len(csv_data.encode('utf-8')) / 1024:.1f} KB")
+                        
+                        # Data type summary
+                        st.markdown("**Column Types:**")
+                        for col, dtype in data.dtypes.items():
+                            st.write(f"- `{col}`: {dtype}")
+                    else:
+                        st.info("Load data to see summary.")
         
-        # Simplified visualization options
-        with st.sidebar.expander("🎨 Visualization Options", expanded=False):
+        # Simplified fine settings - moved here for better organization
+        with st.sidebar.expander("⚙️ Fine Settings", expanded=False):
+            # Color palette selection (moved from main section)
+            palette_options = [
+                "Set1", "Set2", "Set3", "tab10", "Dark2", "Pastel1", "Accent",
+                "viridis", "plasma", "magma", "inferno", "cividis", "colorblind"
+            ]
+            
+            # Get current color palette selection with key for session state
+            current_palette = st.session_state.get('color_palette', 'Set3')
+            palette_index = palette_options.index(current_palette) if current_palette in palette_options else 2  # Set3 is at index 2
+            
+            color_palette = st.selectbox(
+                "🎨 Color Palette",
+                options=palette_options,
+                index=palette_index,
+                key='color_palette',
+                help="Select color palette for visualizations"
+            )
+
+            # Palette preview
+            import matplotlib.pyplot as plt
+            import matplotlib.patches as mpatches
+            import seaborn as sns
+            from io import BytesIO
+            import base64
+            def get_palette_colors(palette_name, n_colors=8):
+                try:
+                    return sns.color_palette(palette_name, n_colors)
+                except Exception:
+                    return sns.color_palette("Set3", n_colors)
+            preview_colors = get_palette_colors(color_palette, 8)
+            fig_palette, ax_palette = plt.subplots(figsize=(4, 0.5))
+            for i, color in enumerate(preview_colors):
+                ax_palette.add_patch(mpatches.Rectangle((i, 0), 1, 1, color=color))
+            ax_palette.set_xlim(0, 8)
+            ax_palette.set_ylim(0, 1)
+            ax_palette.axis('off')
+            buf = BytesIO()
+            fig_palette.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+            plt.close(fig_palette)
+            palette_img = base64.b64encode(buf.getvalue()).decode('utf-8')
+            st.markdown(f"<b>Palette Preview:</b><br><img src='data:image/png;base64,{palette_img}' style='width:100%;height:30px;border-radius:6px;'>", unsafe_allow_html=True)
+            
+            # Additional visualization settings
             show_additional_plots = st.checkbox(
                 "Additional Plot Types",
                 value=False,
-                help="Show correlation matrix and pairwise plots"
+                key='show_additional_plots',
+                help="Enable all plot types (boxplot, violin, histogram, swarm, kde, barplot, scatter, density)"
+            )
+            
+            # Plot rendering mode selection
+            plot_mode = st.radio(
+                "🖥️ Plot Rendering Mode",
+                options=["Interactive (Plotly)", "Static (Matplotlib)"],
+                index=0,
+                key='fine_plot_mode',
+                help="Interactive: Web-based plots with zoom/hover\nStatic: Traditional publication-ready plots"
+            )
+            
+            # Layout mode selection
+            layout_mode = st.radio(
+                "📐 Page Layout",
+                options=["Centered (Optimized)", "Wide (Full Screen)", "Compact (Minimal)"],
+                index=0,
+                key='layout_mode',
+                help="Centered: Best for readability\nWide: Uses full screen width\nCompact: Minimal spacing"
+            )
+            
+            # Layout will be applied at the page level
+            if layout_mode != st.session_state.get('layout_mode', 'Centered (Optimized)'):
+                st.rerun()  # Rerun to apply new layout
+            
+            # Statistical display options
+            show_statistics = st.checkbox(
+                "📊 Show Statistical Results",
+                value=True,
+                key='show_statistics',
+                help="Show/hide the statistical analysis panel (Kruskal-Wallis test, group statistics, post-hoc tests, etc.)"
+            )
+            
+            # Advanced analysis options
+            st.markdown("**🔬 Advanced Analysis:**")
+            use_multi_score = st.checkbox(
+                "Multi-Score Analysis",
+                value=False,
+                key='use_multi_score',
+                help="Compare multiple conservation scores (PhyloP, GERP, etc.)"
             )
         
         # Apply advanced grouping - simplified to basic filtering only
@@ -1236,9 +1782,8 @@ def run_taxonomic_analysis():
         final_group_column = group_column
         
         # Multi-score analysis
-        if use_multi_score:
+        if st.session_state.get('use_multi_score', False):
             st.markdown("---")
-            st.markdown("### 🔬 Multi-Score Conservation Analysis")
             multi_score_results = create_multi_score_analysis_ui(data, group_column)
             
             # If multi-score analysis was performed, we can show additional insights
@@ -1247,57 +1792,12 @@ def run_taxonomic_analysis():
             
             st.markdown("---")
         
-        # Advanced statistics analysis - conditional based on user selection
-        if use_advanced_stats:
-            st.markdown("---")
-            st.markdown("### 🧮 Detailed Statistical Analysis")
-            
-            # Create simplified version of advanced stats
-            if advanced_stats_level == "Expert":
-                # Full advanced stats UI
-                advanced_stats_results = create_advanced_statistics_ui(data, score_column, group_column)
-            else:
-                # Simplified version - create a basic version
-                from src.analysis import perform_statistical_analysis
-                basic_stats = perform_statistical_analysis(data, score_column, group_column)
-                
-                if basic_stats:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Kruskal-Wallis H", f"{basic_stats['h_statistic']:.4f}")
-                        st.metric("p-value", f"{basic_stats['p_value']:.6f}")
-                    with col2:
-                        st.metric("Significant?", "✅ Yes" if basic_stats['significant'] else "❌ No")
-                        st.metric("Groups", basic_stats['n_groups'])
-                    
-                    if show_effect_sizes:
-                        # Calculate basic effect size (eta-squared approximation)
-                        from scipy.stats import kruskal
-                        n_total = len(data.dropna(subset=[score_column, group_column]))
-                        k_groups = data[group_column].nunique()
-                        eta_squared_approx = (basic_stats['h_statistic'] - k_groups + 1) / (n_total - k_groups)
-                        st.metric("Effect Size (η²)", f"{eta_squared_approx:.4f}")
-                
-                advanced_stats_results = None
-            
-            # Store results for potential export
-            if advanced_stats_results:
-                st.session_state['advanced_stats_results'] = advanced_stats_results
-            
-            st.markdown("---")
-        # Analysis button only enabled if data and columns are selected
-        st.sidebar.markdown("---")
-        
-        analysis_enabled = data is not None and group_column and score_column
-        run_analysis_clicked = st.sidebar.button("▶️ Run Analysis", type="primary", disabled=not analysis_enabled, key="advanced_analysis_button")
-        analysis_results = None  # Always define before use
-        # Scroll flag: run_analysis_clicked only
-        if run_analysis_clicked:
-            st.session_state['scroll_to_results'] = True
+        # Apply advanced grouping - simplified to basic filtering only
             # Defensive: check again if columns exist
             if score_column not in data.columns or group_column not in data.columns:
                 st.error("❌ Selected columns not found in data!")
             elif not pd.api.types.is_numeric_dtype(data[score_column]):
+                st.error("❌ Score column must contain numeric values!")
                 st.error("❌ Score column must contain numeric values!")
             elif data[score_column].isnull().any():
                 st.error("❌ Score column contains missing values!")
@@ -1321,7 +1821,10 @@ def run_taxonomic_analysis():
                     st.session_state['current_data'] = data  # Store for cache access
                     analysis_results = cached_statistical_analysis(data_hash, score_column, group_column)
                     analysis_time = time.time() - start_time
-                    performance_monitor.record_metric('analysis_time', analysis_time)
+                    try:
+                        performance_monitor.record_metric('analysis_time', analysis_time)
+                    except Exception:
+                        pass  # Ignore performance monitoring errors
                 else:
                     # Fallback without caching
                     analysis_results = perform_statistical_analysis(data, score_column, group_column)
@@ -1331,18 +1834,6 @@ def run_taxonomic_analysis():
                     # Step 3: Generate visualization
                     status_text.text("🎨 Creating visualization...")
                     progress_bar.progress(70)
-                    
-                    # Optimize visualization generation
-                    if MODULES_AVAILABLE:
-                        start_time = time.time()
-                    
-                    fig, plot_type_used = create_local_visualization(
-                        data, score_column, group_column, plot_type, color_palette, interactive_mode
-                    )
-                    
-                    if MODULES_AVAILABLE:
-                        plot_time = time.time() - start_time
-                        performance_monitor.record_metric('plot_generation_time', plot_time)
                     
                     progress_bar.progress(100)
                     status_text.text("")
@@ -1357,98 +1848,159 @@ def run_taxonomic_analysis():
                     """, unsafe_allow_html=True)
                     if show_statistics:
                         col1, col2 = st.columns([0.7, 1.3], gap="large")
-                    else:
-                        col1, col2 = st.columns([0.1, 1.9], gap="large")
-                    with col1:
-                        info_expander = st.expander("Show/Hide Statistical Results", expanded=True)
-                        with info_expander:
-                            # Section 1: Kruskal-Wallis
-                            with st.expander("🧮 Kruskal-Wallis Test", expanded=True):
-                                st.write(f"**H-statistic:** {analysis_results['h_statistic']:.4f}")
-                                st.write(f"**p-value:** {analysis_results['p_value']:.6f}")
-                                st.write(f"**Groups:** {analysis_results['n_groups']}")
-                                if analysis_results['significant']:
-                                    st.success("Significant difference detected!")
-                                else:
-                                    st.warning("No significant difference found.")
-                            # Section 2: Group Statistics
-                            with st.expander("📋 Group Statistics", expanded=False):
-                                stats_df = analysis_results['stats_summary']
-                                stats_df.index.name = 'Taxon Group'
-                                st.dataframe(stats_df, use_container_width=True)
-                            # Section 3: Post-hoc Dunn Test
-                            with st.expander("🔬 Post-hoc Dunn Test", expanded=False):
-                                try:
-                                    import scikit_posthocs as sp # type: ignore
-                                    dunn_results = sp.posthoc_dunn(data, val_col=score_column, group_col=group_column, p_adjust='bonferroni')
-                                    st.dataframe(dunn_results, use_container_width=True)
-                                except ImportError:
-                                    st.warning("scikit-posthocs package is not installed. To use the post-hoc Dunn test, run 'pip install scikit-posthocs'.")
-                            # Section 4: Outlier Detection
-                            with st.expander("🔎 Outlier Detection (IQR method)", expanded=False):
-                                # Use fast outlier detection for large datasets
-                                if MODULES_AVAILABLE and len(data) > 1000:
-                                    outlier_table = get_fast_outlier_detection(data, score_column, group_column)
-                                    if not outlier_table.empty:
-                                        st.dataframe(outlier_table, use_container_width=True)
+                        with col1:
+                            info_expander = st.expander("Show/Hide Statistical Results", expanded=True)
+                            with info_expander:
+                                # Section 1: Kruskal-Wallis
+                                with st.expander("🧮 Kruskal-Wallis Test", expanded=True):
+                                    st.write(f"**H-statistic:** {analysis_results['h_statistic']:.4f}")
+                                    st.write(f"**p-value:** {analysis_results['p_value']:.6f}")
+                                    st.write(f"**Groups:** {analysis_results['n_groups']}")
+                                    if analysis_results['significant']:
+                                        st.success("Significant difference detected!")
                                     else:
-                                        st.info("No outliers detected in any group.")
-                                else:
-                                    # Original pandas-based outlier detection
-                                    outlier_info = {}
-                                    outlier_table = None
+                                        st.warning("No significant difference found.")
+                                # Section 2: Group Statistics
+                                with st.expander("📋 Group Statistics", expanded=False):
+                                    stats_df = analysis_results['stats_summary']
+                                    stats_df.index.name = 'Taxon Group'
+                                    st.dataframe(stats_df, use_container_width=True)
+                                # Section 3: Post-hoc Dunn Test
+                                with st.expander("🔬 Post-hoc Dunn Test", expanded=False):
+                                    try:
+                                        import scikit_posthocs as sp # type: ignore
+                                        dunn_results = sp.posthoc_dunn(data, val_col=score_column, group_col=group_column, p_adjust='bonferroni')
+                                        # Format the results for better display
+                                        dunn_formatted = dunn_results.round(8)  # Round to 8 decimal places
+                                        # Replace very small values with scientific notation
+                                        dunn_formatted = dunn_formatted.applymap(lambda x: f"{x:.2e}" if x < 0.001 and x != 0 else f"{x:.6f}")
+                                        st.dataframe(dunn_formatted, use_container_width=True)
+                                    except ImportError:
+                                        st.warning("scikit-posthocs package is not installed. To use the post-hoc Dunn test, run 'pip install scikit-posthocs'.")
+                                # Section 4: Outlier Detection
+                                with st.expander("🔎 Outlier Detection (IQR method)", expanded=False):
+                                    # Use fast outlier detection for large datasets
+                                    if MODULES_AVAILABLE and len(data) > 1000:
+                                        outlier_table = get_fast_outlier_detection(data, score_column, group_column)
+                                        if not outlier_table.empty:
+                                            st.dataframe(outlier_table, use_container_width=True)
+                                        else:
+                                            st.info("No outliers detected in any group.")
+                                    else:
+                                        # Original pandas-based outlier detection
+                                        outlier_info = {}
+                                        outlier_table = None
+                                        stats_df = analysis_results.get('stats_summary')
+                                        if stats_df is not None and not stats_df.empty:
+                                            for group in stats_df.index:
+                                                vals = data[data[group_column] == group][score_column].dropna()
+                                                q1 = vals.quantile(0.25)
+                                                q3 = vals.quantile(0.75)
+                                                iqr = q3 - q1
+                                                lower = q1 - 1.5 * iqr
+                                                upper = q3 + 1.5 * iqr
+                                                outliers = vals[(vals < lower) | (vals > upper)]
+                                                outlier_info[group] = (len(outliers), list(outliers))
+                                            outlier_table = pd.DataFrame({
+                                                'Outlier Count': {g: outlier_info[g][0] for g in outlier_info},
+                                                'Outlier Values': {g: outlier_info[g][1] for g in outlier_info}
+                                            })
+                                            st.dataframe(outlier_table, use_container_width=True)
+                                        else:
+                                            st.warning("No group statistics available for outlier detection.")
+                                # Section 5: Normality Test
+                                with st.expander("🧪 Normality Test (Shapiro-Wilk)", expanded=False):
+                                    from scipy.stats import shapiro
+                                    normality_results = {}
+                                    normality_df = None
                                     stats_df = analysis_results.get('stats_summary')
                                     if stats_df is not None and not stats_df.empty:
                                         for group in stats_df.index:
                                             vals = data[data[group_column] == group][score_column].dropna()
-                                            q1 = vals.quantile(0.25)
-                                            q3 = vals.quantile(0.75)
-                                            iqr = q3 - q1
-                                            lower = q1 - 1.5 * iqr
-                                            upper = q3 + 1.5 * iqr
-                                            outliers = vals[(vals < lower) | (vals > upper)]
-                                            outlier_info[group] = (len(outliers), list(outliers))
-                                        outlier_table = pd.DataFrame({
-                                            'Outlier Count': {g: outlier_info[g][0] for g in outlier_info},
-                                            'Outlier Values': {g: outlier_info[g][1] for g in outlier_info}
-                                        })
-                                        st.dataframe(outlier_table, use_container_width=True)
+                                            if len(vals) >= 3:
+                                                stat, pval = shapiro(vals)
+                                                normality_results[group] = {'W': stat, 'p-value': pval}
+                                            else:
+                                                normality_results[group] = {'W': None, 'p-value': None}
+                                        normality_df = pd.DataFrame(normality_results).T
+                                        st.dataframe(normality_df, use_container_width=True)
                                     else:
-                                        st.warning("No group statistics available for outlier detection.")
-                            # Section 5: Normality Test
-                            with st.expander("🧪 Normality Test (Shapiro-Wilk)", expanded=False):
-                                from scipy.stats import shapiro
-                                normality_results = {}
-                                normality_df = None
-                                stats_df = analysis_results.get('stats_summary')
-                                if stats_df is not None and not stats_df.empty:
-                                    for group in stats_df.index:
-                                        vals = data[data[group_column] == group][score_column].dropna()
-                                        if len(vals) >= 3:
-                                            stat, pval = shapiro(vals)
-                                            normality_results[group] = {'W': stat, 'p-value': pval}
-                                        else:
-                                            normality_results[group] = {'W': None, 'p-value': None}
-                                    normality_df = pd.DataFrame(normality_results).T
-                                    st.dataframe(normality_df, use_container_width=True)
-                                else:
-                                    st.warning("No group statistics available for normality testing.")
+                                        st.warning("No group statistics available for normality testing.")
+            
+            # Initialize variables outside of the statistical section to avoid UnboundLocalError
+            # These will be available for export even if statistics section is hidden
+            normality_df = None
+            outlier_table = None
+            
+            # Store normality_df and outlier_table in a broader scope if they were created
+            if show_statistics and 'analysis_results' in locals() and analysis_results:
+                try:
+                    from scipy.stats import shapiro
+                    normality_results = {}
+                    stats_df = analysis_results.get('stats_summary')
+                    if stats_df is not None and not stats_df.empty:
+                        for group in stats_df.index:
+                            vals = data[data[group_column] == group][score_column].dropna()
+                            if len(vals) >= 3:
+                                stat, pval = shapiro(vals)
+                                normality_results[group] = {'W': stat, 'p-value': pval}
+                            else:
+                                normality_results[group] = {'W': None, 'p-value': None}
+                        normality_df = pd.DataFrame(normality_results).T
+                except Exception:
+                    normality_df = None
+                
+                # Also compute outlier_table for export
+                try:
+                    if MODULES_AVAILABLE and len(data) > 1000:
+                        outlier_table = get_fast_outlier_detection(data, score_column, group_column)
+                    else:
+                        outlier_info = {}
+                        stats_df = analysis_results.get('stats_summary')
+                        if stats_df is not None and not stats_df.empty:
+                            for group in stats_df.index:
+                                vals = data[data[group_column] == group][score_column].dropna()
+                                q1 = vals.quantile(0.25)
+                                q3 = vals.quantile(0.75)
+                                iqr = q3 - q1
+                                lower = q1 - 1.5 * iqr
+                                upper = q3 + 1.5 * iqr
+                                outliers = vals[(vals < lower) | (vals > upper)]
+                                outlier_info[group] = (len(outliers), list(outliers))
+                            outlier_table = pd.DataFrame({
+                                'Outlier Count': {g: outlier_info[g][0] for g in outlier_info},
+                                'Outlier Values': {g: outlier_info[g][1] for g in outlier_info}
+                            })
+                except Exception:
+                    outlier_table = None
+            else:
+                # Show statistics disabled - use full width for plot
+                col1, col2 = st.columns([0.05, 0.95], gap="small")
+                with col1:
+                    st.empty()  # Empty placeholder
+                    
                     with col2:
                         # Only show plot if fig is valid
                         if fig is not None:
                             st.markdown("<div id='results_plot'></div>", unsafe_allow_html=True)
-                            if plot_type_used == "interactive":
+                            # Get plot mode from session state
+                            plot_mode = st.session_state.get('fine_plot_mode', 'Interactive (Plotly)')
+                            interactive_mode = plot_mode == "Interactive (Plotly)"
+                            if interactive_mode:
                                 st.plotly_chart(fig, use_container_width=True)
-                                # --- Plotly image download buttons ---
-                                # Only HTML download is offered for interactive plots; PNG/SVG info messages removed
-                                # ...existing code...
                             else:
-                                try:
-                                    st.pyplot(fig, use_container_width=True)
-                                except Exception as e:
-                                    st.error(f"Error displaying plot: {e}")
+                                # Static mode: only display if fig is a Matplotlib figure
+                                from matplotlib.figure import Figure as MplFigure
+                                if isinstance(fig, MplFigure):
+                                    try:
+                                        st.pyplot(fig, use_container_width=True)
+                                    except Exception as e:
+                                        st.error(f"Error displaying plot: {e}")
+                                else:
+                                    st.error("Static plot is not a Matplotlib figure. Cannot render.")
                             
                             # Additional plots if enabled
+                            show_additional_plots = st.session_state.get('show_additional_plots', False)
                             if show_additional_plots:
                                 st.markdown("### 📊 Additional Visualizations")
                                 
@@ -1460,12 +2012,13 @@ def run_taxonomic_analysis():
                                 # Smart correlation matrix - show different types based on available data
                                 if len(conservation_cols) > 1:
                                     # Conservation-focused correlation
-                                    st.markdown("**� Conservation Score Correlations**")
+                                    st.markdown("**[i] Conservation Score Correlations**")
                                     st.caption(f"Analyzing {len(conservation_cols)} conservation scores")
                                     
                                     corr_matrix = data[conservation_cols].corr()
                                     
                                     if interactive_mode:
+                                        import plotly.express as px
                                         corr_fig = px.imshow(
                                             corr_matrix, 
                                             title="Conservation Score Correlation Matrix",
@@ -1489,6 +2042,7 @@ def run_taxonomic_analysis():
                                     corr_matrix = data[num_cols].corr()
                                     
                                     if interactive_mode:
+                                        import plotly.express as px
                                         corr_fig = px.imshow(
                                             corr_matrix, 
                                             title="Numeric Variable Correlation Matrix",
@@ -1511,6 +2065,7 @@ def run_taxonomic_analysis():
                                     plot_cols = conservation_cols[:3]
                                     
                                     if interactive_mode and len(plot_cols) >= 2:
+                                        import plotly.express as px
                                         scatter_fig = px.scatter_matrix(
                                             data, 
                                             dimensions=plot_cols,
@@ -1554,63 +2109,12 @@ def run_taxonomic_analysis():
                         else:
                             st.error("No plot was generated. Please check your data and visualization settings.")
                             # Remove empty box: do not show any placeholder or empty container
-            st.markdown("---")
-            st.subheader("🔍 Additional Analysis")
             
-            # Summary statistics
-            with st.expander("📊 Detailed Summary Statistics"):
-                st.write("**Overall Statistics:**")
-                overall_stats = data[score_column].describe()
-                st.dataframe(overall_stats.to_frame().T, use_container_width=True)
-                
-                st.write("**Group Comparisons:**")
-                
-                # Use fast group statistics for better performance
-                if MODULES_AVAILABLE and len(data) > 1000:
-                    group_stats = get_fast_group_statistics(data, score_column, group_column)
-                else:
-                    group_stats = data.groupby(group_column)[score_column].describe()
-                
-                st.dataframe(group_stats, use_container_width=True)
-                
-                # --- Data Preview with Pagination for Large Datasets ---
-                st.write("**📋 Data Preview:**")
-                if len(data) > 1000 and MODULES_AVAILABLE:
-                    # Use lazy loading for large datasets
-                    st.info(f"� Large dataset ({len(data):,} rows) - showing paginated view")
-                    
-                    # Pagination controls
-                    page_size = st.selectbox("Rows per page:", [50, 100, 200, 500], index=1)
-                    total_pages = (len(data) + page_size - 1) // page_size
-                    page = st.number_input("Page:", min_value=1, max_value=total_pages, value=1) - 1
-                    
-                    # Get paginated data
-                    paginated_data, pagination_info = lazy_loader.get_paginated_data(data, page, page_size)
-                    
-                    st.write(f"Showing rows {pagination_info['start_idx']+1}-{pagination_info['end_idx']} of {pagination_info['total_rows']:,}")
-                    st.dataframe(paginated_data, use_container_width=True, height=300)
-                else:
-                    # Show all data for smaller datasets
-                    display_data = data.head(500) if len(data) > 500 else data
-                    if len(data) > 500:
-                        st.info(f"Showing first 500 rows of {len(data):,} total rows")
-                    st.dataframe(display_data, use_container_width=True, height=300)
-                
-                # --- Correlation analysis ---
-                st.write("**📈 Correlation Analysis (numeric columns):**")
-                num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
-                if len(num_cols) > 1:
-                    corr_matrix = data[num_cols].corr(method='pearson')
-                    st.dataframe(corr_matrix, use_container_width=True)
-                    import seaborn as sns
-                    import matplotlib.pyplot as plt
-                    fig_corr, ax_corr = plt.subplots(figsize=(6, 4))
-                    sns.heatmap(corr_matrix, annot=True, cmap='viridis', ax=ax_corr)
-                    st.pyplot(fig_corr)
             # Data export with organized interface
             if analysis_results is not None:
                 with st.expander("📥 Export Results & Data"):
                     import json
+                    from datetime import datetime
                     # Organized export interface
                     st.markdown("**📊 Download Analysis Results**")
                     col1, col2 = st.columns(2)
@@ -1670,11 +2174,13 @@ def run_taxonomic_analysis():
                         try:
                             import scikit_posthocs as sp # type: ignore
                             dunn_results = sp.posthoc_dunn(data, val_col=score_column, group_col=group_column, p_adjust='bonferroni')
+                            # Format the results for better display and export
+                            dunn_formatted = dunn_results.round(8)  # Round to 8 decimal places
                             dunn_csv = io.StringIO()
-                            if isinstance(dunn_results.index, pd.MultiIndex):
-                                dunn_results_reset = dunn_results.reset_index()
+                            if isinstance(dunn_formatted.index, pd.MultiIndex):
+                                dunn_results_reset = dunn_formatted.reset_index()
                             else:
-                                dunn_results_reset = dunn_results
+                                dunn_results_reset = dunn_formatted
                             dunn_results_reset.to_csv(dunn_csv, index=False)
                             dunn_csv.seek(0)
                             st.download_button(
@@ -1737,49 +2243,65 @@ def run_taxonomic_analysis():
                     # --- Plot Image Export ---
                     with col2:
                         st.markdown("**Plot Image Export**")
-                        # Plotly interactive
-                        if fig is not None and plot_type_used == "interactive":
-                            # HTML indirme seçeneği (kaleido gerektirmez)
-                            import plotly.io as pio
-                            html_str_io = io.StringIO()
-                            pio.write_html(fig, file=html_str_io, auto_open=False)
-                            html_str = html_str_io.getvalue()
-                            html_bytes = html_str.encode('utf-8')
-                            st.download_button(
-                                label="Download Plot as HTML (Interactive)",
-                                data=html_bytes,
-                                file_name="conservation_plot.html",
-                                mime="text/html",
-                                key="download_html_interactive"
-                            )
-                        # Matplotlib static
-                        elif fig is not None and plot_type_used == "static":
-                            try:
-                                static_png = io.BytesIO()
-                                fig.savefig(static_png, format="png", bbox_inches='tight', dpi=300)
-                                static_png.seek(0)
+                        # Check figure type for proper export
+                        if fig is not None:
+                            # Get plot mode setting
+                            plot_mode = st.session_state.get('fine_plot_mode', 'Interactive (Plotly)')
+                            interactive_mode = plot_mode == "Interactive (Plotly)"
+                            
+                            # Check if we have a plotly figure (interactive mode)
+                            import plotly.graph_objects as go
+                            if interactive_mode and isinstance(fig, (go.Figure, dict)):
+                                # HTML indirme seçeneği (kaleido gerektirmez)
+                                import plotly.io as pio
+                                html_str_io = io.StringIO()
+                                pio.write_html(fig, file=html_str_io, auto_open=False)
+                                html_str = html_str_io.getvalue()
+                                html_bytes = html_str.encode('utf-8')
                                 st.download_button(
-                                    label="Download Plot as PNG",
-                                    data=static_png,
-                                    file_name="conservation_plot.png",
-                                    mime="image/png",
-                                    key="download_png_static"
+                                    label="Download Plot as HTML (Interactive)",
+                                    data=html_bytes,
+                                    file_name="conservation_plot.html",
+                                    mime="text/html",
+                                    key="download_html_interactive"
                                 )
-                            except Exception as e:
-                                st.error(f"Static PNG export failed: {e}")
-                            try:
-                                static_svg = io.BytesIO()
-                                fig.savefig(static_svg, format="svg", bbox_inches='tight', dpi=300)
-                                static_svg.seek(0)
-                                st.download_button(
-                                    label="Download Plot as SVG (Publication Quality)",
-                                    data=static_svg,
-                                    file_name="conservation_plot.svg",
-                                    mime="image/svg+xml",
-                                    key="download_svg_static"
-                                )
-                            except Exception as e:
-                                st.error(f"Static SVG export failed: {e}")
+                            # Check if we have a matplotlib figure (static mode)  
+                            elif not interactive_mode:
+                                # Static figure export (Matplotlib)
+                                from matplotlib.figure import Figure as MplFigure
+                                if isinstance(fig, MplFigure):
+                                    # Export PNG
+                                    try:
+                                        buf_png = io.BytesIO()
+                                        fig.savefig(buf_png, format="png", bbox_inches='tight', dpi=300)
+                                        buf_png.seek(0)
+                                        st.download_button(
+                                            label="Download Plot as PNG",
+                                            data=buf_png,
+                                            file_name="conservation_plot.png",
+                                            mime="image/png",
+                                            key="download_png_static"
+                                        )
+                                    except Exception as e:
+                                        st.error(f"Static PNG export failed: {e}")
+                                    # Export SVG
+                                    try:
+                                        buf_svg = io.BytesIO()
+                                        fig.savefig(buf_svg, format="svg", bbox_inches='tight', dpi=300)
+                                        buf_svg.seek(0)
+                                        st.download_button(
+                                            label="Download Plot as SVG (Publication Quality)",
+                                            data=buf_svg,
+                                            file_name="conservation_plot.svg",
+                                            mime="image/svg+xml",
+                                            key="download_svg_static"
+                                        )
+                                    except Exception as e:
+                                        st.error(f"Static SVG export failed: {e}")
+                                else:
+                                    st.info("Plot export not available for this plot type.")
+                            else:
+                                st.info("Plot export not available for current plot type.")
 
 def run_variant_analysis():
     """VCF variant conservation analysis interface"""
@@ -1800,7 +2322,8 @@ def run_variant_analysis():
         vcf_file = st.file_uploader(
             "Upload VCF File",
             type=['vcf'],
-            help="Upload a VCF file containing variants for conservation analysis"
+            help="Upload a VCF file containing variants for conservation analysis",
+            key="vcf_file_uploader"
         )
         
         # Sample data button
@@ -1818,7 +2341,8 @@ def run_variant_analysis():
         conservation_db = st.file_uploader(
             "Upload Conservation Database (Optional)",
             type=['csv', 'tsv'],
-            help="Upload conservation score database or use built-in data"
+            help="Upload conservation score database or use built-in data",
+            key="conservation_db_uploader"
         )
         
         use_demo_conservation = st.checkbox(

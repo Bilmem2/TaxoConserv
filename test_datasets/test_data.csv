@@ -1,0 +1,6 @@
+gene,taxon_group,phyloP_score,GERP_score
+BRCA1,Primates,3.245,4.820
+TP53,Carnivores,2.156,3.567
+EGFR,Birds,2.890,4.123
+MYC,Rodents,1.567,2.890
+KRAS,Fish,0.890,1.234

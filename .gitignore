@@ -49,6 +49,10 @@ output/*.html
 temp_*.vcf
 temp_*.csv
 
+# Personal development files
+CHANGELOG.md
+RELEASE_NOTES.md
+
 # Test coverage files
 .coverage
 htmlcov/

@@ -1,69 +1,95 @@
-def score_column_type(score_column: str) -> str:
-    """
-    Detect conservation score type based on column name.
-    Returns: 'numeric', 'signed', 'ratio', or 'unknown'
-    """
-    col = score_column.lower()
-    if "gerp" in col:
-        return "numeric"
-    elif "phylop" in col:
-        return "signed"
-    elif "phastcons" in col:
-        return "ratio"
-    else:
-        return "unknown"
-
-def suggest_plots(score_type: str) -> list:
-    """
-    Suggest best plot types for a given score type.
-    """
-    if score_type == "numeric":
-        return ["kde", "violin"]
-    elif score_type == "signed":
-        return ["boxplot", "swarm"]
-    elif score_type == "ratio":
-        return ["boxplot", "density", "heatmap"]
-    else:
-        return ["boxplot", "violin", "swarm", "histogram"]
-
 """
+TaxoConserv - Visualization Module
+
+Copyright 2025 Can Sevilmiş
+Licensed under Apache License 2.0
+For research and educational purposes only.
+
 Unified visualization module for TaxoConserv.
 All plot functions are routed through create_visualization.
-Only modular, non-duplicated code and necessary imports remain.
 """
-
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.colors as mcolors
+import matplotlib.patches as mpatches
 import logging
 from typing import Optional
-
 from pathlib import Path
+
 try:
     import plotly.express as px
+    import plotly.graph_objects as go
+    import plotly.io as pio
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
 
+# Color palettes for consistent styling
+COLOR_PALETTES = {
+    "colorblind": ["#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#ffff33", "#a65628", "#f781bf", "#999999"],
+    "Set1": ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#ffff33", "#a65628", "#f781bf"],
+    "Set2": ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f", "#e5c494", "#b3b3b3"],
+    "Set3": ["#8dd3c7", "#ffffb3", "#bebada", "#fb8072", "#80b1d3", "#fdb462", "#b3de69", "#fccde5"],
+    "viridis": ["#440154", "#31688e", "#35b779", "#fde725"],
+    "plasma": ["#0d0887", "#6a00a8", "#b12a90", "#e16462"],
+    "magma": ["#000004", "#721f81", "#b73779", "#fcfdbf"],
+    "inferno": ["#000004", "#781c6d", "#ed6925", "#fcffa4"]
+}
+
 try:
-    from .utils import (
-        get_palette_for_groups,
-        _setup_plot_style,
-        _customize_plot,
-        _save_plot,
-        COLOR_PALETTES
-    )
+    from .utils import get_palette_for_groups, _setup_plot_style, _customize_plot, _save_plot
 except ImportError:
-    # Fallback for CLI usage (run as script)
-    from utils import (
-        get_palette_for_groups,
-        _setup_plot_style,
-        _customize_plot,
-        _save_plot,
-        COLOR_PALETTES
-    )
+    # Fallback implementations if utils module not available
+    def get_palette_for_groups(palette_name_or_colors, n_groups: int) -> list:
+        """Get color palette for the specified number of groups."""
+        if isinstance(palette_name_or_colors, list):
+            colors = palette_name_or_colors
+        elif isinstance(palette_name_or_colors, str) and palette_name_or_colors in COLOR_PALETTES:
+            colors = COLOR_PALETTES[palette_name_or_colors]
+        else:
+            # Fallback to default palette
+            colors = COLOR_PALETTES["colorblind"]
+        
+        # Repeat colors if needed
+        if n_groups > len(colors):
+            colors = colors * (n_groups // len(colors) + 1)
+        
+        return colors[:n_groups]
+    
+    def _setup_plot_style(color_palette: str):
+        """Setup plot style and color palette."""
+        sns.set_style("whitegrid")
+        plt.rcParams.update({
+            'font.family': 'DejaVu Sans',
+            'font.size': 11,
+            'axes.titlesize': 13,
+            'axes.labelsize': 12,
+            'xtick.labelsize': 11,
+            'ytick.labelsize': 11,
+            'legend.fontsize': 11
+        })
+    
+    def _customize_plot(ax, title: Optional[str], group_column: str, score_column: str):
+        """Customize plot appearance."""
+        if title:
+            ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+        
+        ax.set_xlabel(group_column.replace('_', ' ').title(), fontsize=12)
+        ax.set_ylabel(score_column.replace('_', ' ').title(), fontsize=12)
+        
+        # Add grid for better readability
+        ax.grid(True, alpha=0.3)
+    
+    def _save_plot(fig, output_file: str, dpi: int, plot_df: pd.DataFrame, 
+                   group_column: str, score_column: str) -> str:
+        """Save plot with metadata and statistics."""
+        plt.tight_layout()
+        plt.savefig(output_file, dpi=dpi, bbox_inches='tight', facecolor='white')
+        plt.close()
+        return output_file
 
 logger = logging.getLogger("taxoconserv.visualization")
 
@@ -766,7 +792,7 @@ def save_plot_with_metadata(fig, output_path: str, dpi: int = 300) -> None:
     metadata = {
         'Title': 'TaxoConserv Analysis',
         'Author': 'TaxoConserv Tool',
-        'Software': 'TaxoConserv v1.0.0-alpha',
+        'Software': 'TaxoConserv v2.0.0',
         'Creation Time': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
     }
     
@@ -847,7 +873,7 @@ def generate_violin_plot(df: pd.DataFrame,
         n_groups = plot_df[group_column].nunique()
         palette_colors = get_palette_for_groups(COLOR_PALETTES.get(color_palette, "colorblind"), n_groups)
         sns.violinplot(data=plot_df, x=group_column, y=score_column,
-                      palette=palette_colors,
+                      hue=group_column, palette=palette_colors, legend=False,
                       inner="box", ax=ax)
         # Outlier noktalarını vurgula (sade, gri, kutusuz, veri noktasının hemen üstünde)
         for i, group in enumerate(sorted(plot_df[group_column].unique())):
@@ -967,6 +993,7 @@ def generate_heatmap(df: pd.DataFrame,
     
     plot_df = df[[group_column, score_column]].copy().dropna()
     if plot_df.empty:
+        logger.warning("No data available for heatmap")
         return ""
     
     try:
@@ -978,33 +1005,45 @@ def generate_heatmap(df: pd.DataFrame,
         _setup_plot_style(color_palette)
         fig, ax = plt.subplots(figsize=figsize)
         
-        # If selected palette is a matplotlib colormap, use as cmap; if seaborn palette, use first color
-        cmap_name = COLOR_PALETTES.get(color_palette, "viridis")
-        import matplotlib.colors as mcolors
-        # Check if palette is a valid matplotlib colormap
-        if cmap_name in plt.colormaps():
-            cmap = cmap_name
-        else:
-            # Use seaborn palette colors for heatmap
-            palette_colors = get_palette_for_groups(cmap_name, 8)
-            cmap = mcolors.ListedColormap(palette_colors)
+        # Handle colormap selection safely
+        try:
+            # Try to use the palette as a matplotlib colormap first
+            cmap = plt.get_cmap(color_palette)
+        except Exception:
+            # Fallback to viridis if the palette doesn't work as colormap
+            try:
+                # Try as seaborn palette
+                palette_colors = get_palette_for_groups(COLOR_PALETTES.get(color_palette, "viridis"), 8)
+                cmap = mcolors.ListedColormap(palette_colors)
+            except Exception:
+                # Ultimate fallback
+                cmap = 'viridis'
+        
+        # Create heatmap
         sns.heatmap(heatmap_data.T, annot=True, cmap=cmap, 
                    fmt='.3f', cbar_kws={'label': 'Value'}, ax=ax)
         
+        # Add title and labels
         n_total = len(plot_df)
         n_groups = plot_df[group_column].nunique()
         mean = plot_df[score_column].mean()
         std = plot_df[score_column].std()
+        
         if title:
             ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
         else:
             ax.set_title(f"Statistical Summary: {score_column.replace('_', ' ').title()}\nGroups: {n_groups}, Samples: {n_total}\nMean: {mean:.3f}, Std: {std:.3f}", fontsize=14, fontweight='bold', pad=20)
+        
         ax.set_xlabel(group_column.replace('_', ' ').title(), fontsize=12)
         ax.set_ylabel("Statistics", fontsize=12)
+        
+        # Add caption
         caption = f"Heatmap shows the mean, median, std, and count of {score_column} for each {group_column}."
         fig.text(0.5, 0.01, caption, ha='center', fontsize=10, color='gray')
+        
         plt.tight_layout()
         output_file = f"{output_path}.{output_format}"
+        Path(output_file).parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(output_file, dpi=dpi, bbox_inches='tight', facecolor='white', edgecolor='none')
         plt.close(fig)
         logger.info(f"✅ Heatmap saved to: {output_file}")
@@ -1012,6 +1051,7 @@ def generate_heatmap(df: pd.DataFrame,
         
     except Exception as e:
         logger.error(f"❌ Error generating heatmap: {e}")
+        plt.close('all')
         return ""
 
 
@@ -1067,46 +1107,63 @@ def generate_density_plot(df: pd.DataFrame,
                         dpi: int = 300) -> str:
     """Generate density plot (grouped KDE) for score distribution by group."""
     logger.info(f"📈 Generating density plot for {score_column} by group...")
+    
+    # Try to find a group column
+    group_column = None
     if "taxon_group" in df.columns:
         group_column = "taxon_group"
     else:
-        group_column = None
+        # Find first categorical column
+        for col in df.columns:
+            if not pd.api.types.is_numeric_dtype(df[col]) and df[col].nunique() < 20:
+                group_column = col
+                break
+    
     if group_column is None or group_column not in df.columns:
-        logger.warning("No group column found for density plot. Falling back to KDE plot.")
-        return generate_kde_plot(df, score_column, output_path, color_palette, output_format, figsize, title, dpi)
+        logger.warning("No suitable group column found for density plot")
+        return ""
+    
     plot_df = df[[group_column, score_column]].copy().dropna()
     if plot_df.empty:
         return ""
+    
     try:
         _setup_plot_style(color_palette)
         fig, ax = plt.subplots(figsize=figsize)
+        
         n_groups = plot_df[group_column].nunique()
         palette_colors = get_palette_for_groups(COLOR_PALETTES.get(color_palette, "colorblind"), n_groups)
+        
+        # Create density plot for each group
         for i, group in enumerate(sorted(plot_df[group_column].unique())):
-            group_scores = plot_df[plot_df[group_column] == group][score_column]
-            sns.kdeplot(x=group_scores, fill=True, color=palette_colors[i % len(palette_colors)], alpha=0.5, ax=ax, label=str(group))
+            group_data = plot_df[plot_df[group_column] == group][score_column]
+            sns.kdeplot(x=group_data, label=group, color=palette_colors[i], alpha=0.7, ax=ax)
+        
         ax.set_xlabel(score_column.replace('_', ' ').title(), fontsize=12)
         ax.set_ylabel("Density", fontsize=12)
+        
         if title:
             ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
         else:
-            ax.set_title(f"Density Plot of {score_column.replace('_', ' ').title()} by Group", fontsize=14, fontweight='bold', pad=20)
+            ax.set_title(f"Density Plot of {score_column.replace('_', ' ').title()} by {group_column.replace('_', ' ').title()}", fontsize=14, fontweight='bold', pad=20)
+        
         ax.legend(title=group_column.replace('_', ' ').title())
-        caption = f"Density plot shows the estimated density of {score_column} for each {group_column}."
-        fig.text(0.5, 0.01, caption, ha='center', fontsize=10, color='gray')
         plt.tight_layout()
+        
         output_file = f"{output_path}.{output_format}"
         plt.savefig(output_file, dpi=dpi, bbox_inches='tight', facecolor='white', edgecolor='none')
         plt.close(fig)
         logger.info(f"✅ Density plot saved to: {output_file}")
         return output_file
+        
     except Exception as e:
         logger.error(f"❌ Error generating density plot: {e}")
         plt.close('all')
         return ""
 
+
 def generate_interactive_plot(
-    df: pd.DataFrame,
+    df,
     plot_type: str,
     group_column: str,
     score_column: str,
@@ -1117,8 +1174,15 @@ def generate_interactive_plot(
     theme: str = "light"
 ) -> str:
     """Generate interactive plot using Plotly with theme-aware colors."""
+    if not PLOTLY_AVAILABLE:
+        logger.warning("Plotly not available. Falling back to static plot.")
+        return ""
+    
     import plotly.express as px
-    import plotly.io as pio
+    import plotly.graph_objects as go
+    
+    logger.info(f"📈 Generating interactive {plot_type} plot...")
+    
     # Theme detection
     if theme.lower() == "dark":
         template = "plotly_dark"
@@ -1129,10 +1193,115 @@ def generate_interactive_plot(
 
     # Title assignment
     if not title:
-        title = "Conservation Score Distribution by Taxonomic Group"
+        title = f"{plot_type.title()} - Conservation Score Distribution"
 
     # Prepare data
     plot_df = df[[group_column, score_column]].copy().dropna()
+    if plot_df.empty:
+        logger.warning("No data available for interactive plot.")
+        return ""
+    
+    # Get color palette
+    n_groups = plot_df[group_column].nunique()
+    palette_colors = get_palette_for_groups(COLOR_PALETTES.get(color_palette, "colorblind"), n_groups)
+
+    # Select plot type
+    try:
+        if plot_type == "boxplot":
+            fig = px.box(plot_df, x=group_column, y=score_column, color=group_column,
+                        color_discrete_sequence=palette_colors, template=template)
+        elif plot_type == "violin":
+            fig = px.violin(plot_df, x=group_column, y=score_column, color=group_column,
+                           color_discrete_sequence=palette_colors, template=template)
+        elif plot_type == "swarm":
+            # Plotly doesn't have swarm plots, use strip plot
+            fig = px.strip(plot_df, x=group_column, y=score_column, color=group_column,
+                          color_discrete_sequence=palette_colors, template=template)
+        elif plot_type == "histogram":
+            fig = px.histogram(plot_df, x=score_column, color=group_column,
+                              color_discrete_sequence=palette_colors, template=template)
+        elif plot_type == "kde":
+            # Use density contour as approximation
+            fig = px.density_contour(plot_df, x=score_column, color=group_column,
+                                     color_discrete_sequence=palette_colors, template=template)
+        elif plot_type == "heatmap":
+            # For heatmap, use group means
+            heatmap_data = plot_df.groupby(group_column)[score_column].agg(['mean', 'std', 'count']).round(3)
+            fig = px.imshow(heatmap_data.T, 
+                           labels=dict(x=group_column, y="Statistics", color="Value"),
+                           color_continuous_scale=color_palette, template=template)
+        elif plot_type == "correlation":
+            # Get numeric columns for correlation
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            if len(numeric_cols) >= 2:
+                corr = df[numeric_cols].corr()
+                fig = px.imshow(corr, color_continuous_scale=color_palette, template=template)
+            else:
+                logger.warning("Not enough numeric columns for correlation plot.")
+                return ""
+        elif plot_type == "barplot":
+            # Create bar plot with means
+            mean_data = plot_df.groupby(group_column)[score_column].mean().reset_index()
+            fig = px.bar(mean_data, x=group_column, y=score_column, color=group_column,
+                        color_discrete_sequence=palette_colors, template=template)
+        else:
+            # Default to boxplot
+            fig = px.box(plot_df, x=group_column, y=score_column, color=group_column,
+                        color_discrete_sequence=palette_colors, template=template)
+
+        # Update layout for theme-aware title
+        fig.update_layout(
+            title={
+                'text': title,
+                'font': {'size': 20, 'color': title_font_color, 'family': 'Arial'},
+                'x': 0.5,
+                'xanchor': 'center',
+                'y': 0.95,
+                'yanchor': 'top'
+            },
+            font=dict(color=title_font_color),
+            margin=dict(t=60, b=40, l=40, r=40),
+            showlegend=True
+        )
+
+        output_file = f"{output_path}.html"
+        fig.write_html(output_file)
+        logger.info(f"✅ Interactive plot saved to: {output_file}")
+        return output_file
+        
+    except Exception as e:
+        logger.error(f"❌ Error generating interactive plot: {e}")
+        return ""
+
+
+def score_column_type(score_column: str) -> str:
+    """
+    Detect conservation score type based on column name.
+    Returns: 'numeric', 'signed', 'ratio', or 'unknown'
+    """
+    col = score_column.lower()
+    if "gerp" in col:
+        return "numeric"
+    elif "phylop" in col:
+        return "signed"
+    elif "phastcons" in col:
+        return "ratio"
+    else:
+        return "unknown"
+
+
+def suggest_plots(score_type: str) -> list:
+    """
+    Suggest best plot types for a given score type.
+    """
+    if score_type == "numeric":
+        return ["kde", "violin"]
+    elif score_type == "signed":
+        return ["boxplot", "swarm"]
+    elif score_type == "ratio":
+        return ["boxplot", "density", "heatmap"]
+    else:
+        return ["boxplot", "violin", "swarm", "histogram"]
     if plot_df.empty:
         return ""
     n_groups = plot_df[group_column].nunique()
