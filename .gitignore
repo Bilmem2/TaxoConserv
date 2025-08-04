@@ -84,6 +84,14 @@ tests/README_PERFORMANCE_SECURITY.md
 tests/README_TEST_PLAN.md
 tests/README_UIUX_TEST_PLAN.md
 
+# Redundant test files (covered by tests/ directory)
+test_advanced_taxoconserv.py
+test_all_plots.py
+test_taxon_grouping.py
+test_web_interface_core.py
+test_web_taxoconserv_functions.py
+sidebar_clean.py
+
 # Test coverage files
 .coverage
 htmlcov/
