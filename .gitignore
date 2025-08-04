@@ -60,6 +60,25 @@ temp_*.csv
 CHANGELOG.md
 RELEASE_NOTES.md
 
+# Deployment and automation scripts (keep only core)
+auto_start_service.py
+CLOUD_DEPLOYMENT_GUIDE.md
+CONTINUOUS_SERVICE_GUIDE.md
+DEPLOYMENT_GUIDE.md
+generate_large_test_data.py
+integration_test.py
+launch_web_interface.py
+LICENSE_HEADER.py
+Procfile
+Start-AutoService.ps1
+Start-TaxoConserv.ps1
+start_auto_service.bat
+start_web_interface.bat
+requirements-cloud.txt
+requirements-dev.txt
+requirements-web.txt
+runtime.txt
+
 # Test coverage files
 .coverage
 htmlcov/
