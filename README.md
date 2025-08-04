@@ -1,4 +1,4 @@
-# 🍃 TaxoConserv
+# 🌿 TaxoConserv
 
 🧬 **Computational Platform for Evolutionary Conservation Analysis**
 
