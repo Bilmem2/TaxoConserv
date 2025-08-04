@@ -79,6 +79,11 @@ requirements-dev.txt
 requirements-web.txt
 runtime.txt
 
+# Empty documentation files
+tests/README_PERFORMANCE_SECURITY.md
+tests/README_TEST_PLAN.md
+tests/README_UIUX_TEST_PLAN.md
+
 # Test coverage files
 .coverage
 htmlcov/
