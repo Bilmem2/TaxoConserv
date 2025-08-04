@@ -2,9 +2,9 @@
 
 🧬 **Computational Platform for Evolutionary Conservation Analysis**
 
-TaxoConserv is a bioinformatics tool designed for statistical analysis and visualization of evolutionary conservation scores. This student project supports researchers and bioinformaticians in understanding conservation patterns across species.
+TaxoConserv is a bioinformatics tool designed for statistical analysis and visualization of evolutionary conservation scores. This project supports researchers and bioinformaticians in understanding conservation patterns across species.
 
-## 🚀 Features
+## Features
 
 ### Core Analysis Modes
 - **📊 Taxonomic Conservation Analysis**: Statistical comparison across taxonomic classifications
@@ -125,7 +125,7 @@ limitations under the License.
 
 ## 📧 Contact
 
-**Can Sevilmiş** - Student Research Project  
+**Can Sevilmiş** - Student Project  
 🔗 GitHub: [Bilmem2/TaxoConserv](https://github.com/Bilmem2/TaxoConserv)
 
 ---
