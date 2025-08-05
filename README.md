@@ -1,15 +1,23 @@
-# 🌿 TaxoConserv
+# 🌿 TaxoConserv v2.1.0
 
-🧬 **Computational Platform for Evolutionary Conservation Analysis**
+🧬 **Clinical Variant Conservation Analysis Platform**
 
-TaxoConserv is a bioinformatics tool designed for statistical analysis and visualization of evolutionary conservation scores. This student project supports researchers and bioinformaticians in understanding conservation patterns across species.
+TaxoConserv is a production-ready bioinformatics platform for systematic evolutionary conservation analysis with clinical-grade variant interpretation. This comprehensive tool supports researchers, clinicians, and bioinformaticians in quantitative conservation assessment and ACMG-compliant pathogenicity evaluation.
 
-## Features
+## ✨ New in v2.1.0
 
-### Core Analysis Modes
+### 🔬 Variant Conservation Analysis
+- **VCF Processing**: Robust parsing with built-in fallback mechanisms
+- **Consensus Scoring**: Multi-metric weighted algorithms (phyloP, phastCons, GERP++)  
+- **ACMG Integration**: PP3/BP4 criteria with evidence strength quantification
+- **Clinical Reporting**: Professional-grade analysis reports
+
+### 🎯 Key Features
+
+#### Core Analysis Modes
 - **Taxonomic Conservation Analysis**: Statistical comparison across taxonomic classifications
-- **Variant Conservation Analysis**: Individual variant assessment from VCF files
-- **Multi-Score Analysis**: Simultaneous analysis of multiple conservation metrics
+- **Variant Conservation Analysis**: Individual variant assessment from VCF files with ACMG interpretation
+- **Multi-Score Analysis**: Consensus conservation scoring with confidence intervals
 
 ### Capabilities
 - **Performance Optimized**: Data sampling for large datasets (50K+ rows)
@@ -141,4 +149,4 @@ limitations under the License.
 
 ---
 
-*TaxoConserv v2.0.0 - Evolutionary Conservation Analysis Platform*
+*TaxoConserv v2.1.0 - Clinical Variant Conservation Analysis Platform*

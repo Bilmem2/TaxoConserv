@@ -1,9 +1,9 @@
 """
-TaxoConserv - Taxonomic Conservation Analysis Tool
+TaxoConserv - Clinical Variant Conservation Analysis Platform
 Source code modules
 """
 
-__version__ = "1.0.0-alpha"
+__version__ = "2.1.0"
 __author__ = "TaxoConserv Development Team"
 
 # Import core modules

@@ -48,6 +48,11 @@ test_*.pdf
 
 # Temporary files
 *.tmp
+temp_*.vcf
+test_variants.vcf
+
+# Documentation (keep local versions)
+README.md
 *.log
 temp_*.vcf
 temp_*.csv
@@ -59,6 +64,10 @@ temp_*.csv
 # Personal development files
 CHANGELOG.md
 RELEASE_NOTES.md
+RELEASE_NOTES_v*.md
+RELEASE_COMMIT_MESSAGE.md
+PHASE2_DEVELOPMENT.md
+VARIANT_ANALYSIS_ROADMAP.md
 
 # Deployment and automation scripts (keep only core)
 auto_start_service.py
@@ -90,6 +99,7 @@ test_all_plots.py
 test_taxon_grouping.py
 test_web_interface_core.py
 test_web_taxoconserv_functions.py
+test_vcf_parser.py
 sidebar_clean.py
 
 # Test coverage files

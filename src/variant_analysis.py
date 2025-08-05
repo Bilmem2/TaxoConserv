@@ -11,18 +11,22 @@ from typing import Dict, List, Tuple, Optional
 import logging
 from pathlib import Path
 
-# Optional VCF parsing - try to import PyVCF, fall back to simple parsing
+# VCF parsing strategy - prioritize robust built-in parser
+HAS_PYVCF = False
+vcf = None
+
+# Note: External VCF libraries can be problematic on some systems
+# Our built-in parser is robust and handles most VCF formats correctly
 try:
-    import vcf
+    # Try PyVCF3 if specifically installed
+    import vcf as pyvcf_module
     HAS_PYVCF = True
+    vcf = pyvcf_module
+    print("PyVCF library detected - using enhanced VCF parsing")
 except ImportError:
-    try:
-        # Try alternative import names
-        import pyvcf as vcf
-        HAS_PYVCF = True
-    except ImportError:
-        HAS_PYVCF = False
-        print("PyVCF not available. Using simple VCF parsing.")
+    # Use robust built-in parser (recommended)
+    HAS_PYVCF = False
+    print("Using robust built-in VCF parser (recommended for compatibility)")
 
 class VariantConservationAnalyzer:
     """
@@ -88,7 +92,7 @@ class VariantConservationAnalyzer:
         variants = []
         
         try:
-            if HAS_PYVCF:
+            if HAS_PYVCF and vcf is not None:
                 # Use PyVCF if available
                 with open(vcf_path, 'r') as vcf_file:
                     vcf_reader = vcf.Reader(vcf_file)
@@ -106,7 +110,7 @@ class VariantConservationAnalyzer:
                         }
                         variants.append(variant_info)
             else:
-                # Use simple parser
+                # Use robust built-in parser (recommended)
                 variants = self._parse_vcf_simple(vcf_path)
                     
             self.logger.info(f"Parsed {len(variants)} variants from VCF file")
@@ -119,32 +123,116 @@ class VariantConservationAnalyzer:
     
     def _parse_vcf_simple(self, vcf_path: str) -> List[Dict]:
         """
-        Simple VCF parser as fallback
+        Robust VCF parser as fallback with comprehensive error handling
         """
         variants = []
+        line_number = 0
         
-        with open(vcf_path, 'r') as file:
-            for line in file:
-                if line.startswith('#'):
-                    continue
+        try:
+            with open(vcf_path, 'r', encoding='utf-8') as file:
+                for line in file:
+                    line_number += 1
+                    line = line.strip()
                     
-                parts = line.strip().split('\t')
-                if len(parts) >= 5:
-                    variant_info = {
-                        'chromosome': parts[0],
-                        'position': int(parts[1]),
-                        'ref': parts[3],
-                        'alt': parts[4].split(','),
-                        'quality': parts[5] if parts[5] != '.' else None,
-                        'variant_id': f"{parts[0]}:{parts[1]}:{parts[3]}:{parts[4]}"
-                    }
-                    variants.append(variant_info)
+                    # Skip empty lines and comments
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    try:
+                        parts = line.split('\t')
+                        
+                        # Validate minimum VCF columns
+                        if len(parts) < 8:
+                            self.logger.warning(f"Line {line_number}: Insufficient columns ({len(parts)} < 8)")
+                            continue
+                        
+                        # Extract and validate core fields
+                        chrom = parts[0].strip()
+                        pos_str = parts[1].strip()
+                        id_field = parts[2].strip() if parts[2] != '.' else None
+                        ref = parts[3].strip()
+                        alt = parts[4].strip()
+                        qual_str = parts[5].strip()
+                        filter_field = parts[6].strip()
+                        info_field = parts[7].strip()
+                        
+                        # Validate and convert position
+                        try:
+                            position = int(pos_str)
+                            if position <= 0:
+                                self.logger.warning(f"Line {line_number}: Invalid position {position}")
+                                continue
+                        except ValueError:
+                            self.logger.warning(f"Line {line_number}: Cannot convert position '{pos_str}' to integer")
+                            continue
+                        
+                        # Validate nucleotides
+                        valid_bases = set('ATCG')
+                        if not all(base in valid_bases for base in ref.upper()):
+                            self.logger.warning(f"Line {line_number}: Invalid REF allele '{ref}'")
+                            continue
+                        
+                        # Process ALT alleles
+                        alt_alleles = []
+                        for alt_allele in alt.split(','):
+                            alt_allele = alt_allele.strip()
+                            if alt_allele == '.':
+                                continue
+                            if all(base in valid_bases for base in alt_allele.upper()):
+                                alt_alleles.append(alt_allele)
+                            else:
+                                self.logger.warning(f"Line {line_number}: Invalid ALT allele '{alt_allele}'")
+                        
+                        if not alt_alleles:
+                            continue
+                        
+                        # Process quality score
+                        quality = None
+                        if qual_str != '.':
+                            try:
+                                quality = float(qual_str)
+                            except ValueError:
+                                self.logger.warning(f"Line {line_number}: Invalid quality score '{qual_str}'")
+                        
+                        # Parse INFO field for additional annotations
+                        info_dict = {}
+                        if info_field != '.':
+                            for info_item in info_field.split(';'):
+                                if '=' in info_item:
+                                    key, value = info_item.split('=', 1)
+                                    info_dict[key] = value
+                                else:
+                                    info_dict[info_item] = True
+                        
+                        # Create variant object
+                        variant_info = {
+                            'chromosome': chrom,
+                            'position': position,
+                            'id': id_field,
+                            'ref': ref,
+                            'alt': alt_alleles,
+                            'quality': quality,
+                            'filter': filter_field if filter_field != '.' else None,
+                            'info': info_dict,
+                            'variant_id': f"{chrom}:{position}:{ref}:{','.join(alt_alleles)}",
+                            'line_number': line_number
+                        }
+                        variants.append(variant_info)
+                        
+                    except Exception as e:
+                        self.logger.error(f"Line {line_number}: Error parsing variant - {e}")
+                        continue
+                        
+        except Exception as e:
+            self.logger.error(f"Error reading VCF file: {e}")
+            raise
         
+        self.logger.info(f"Successfully parsed {len(variants)} variants from {line_number} lines")
         return variants
     
     def get_conservation_for_variant(self, variant: Dict) -> Dict:
         """
-        Get conservation scores for a specific variant
+        Get conservation scores for a specific variant with enhanced position matching
         
         Parameters:
         -----------
@@ -160,32 +248,112 @@ class VariantConservationAnalyzer:
             raise ValueError("Conservation database not loaded")
         
         position = variant['position']
+        chromosome = variant.get('chromosome', '')
         
-        # Find conservation scores for this position
+        # Enhanced position matching strategy
+        conservation_result = {
+            'variant_id': variant['variant_id'],
+            'chromosome': chromosome,
+            'position': position,
+            'ref': variant['ref'],
+            'alt': variant['alt'],
+            'conservation_available': False,
+            'conservation_scores': {},
+            'taxonomic_analysis': {},
+            'acmg_interpretation': {},
+            'search_strategy': 'direct_match'
+        }
+        
+        # Strategy 1: Direct position match
         position_data = self.conservation_data[
             self.conservation_data['position'] == position
         ].copy()
         
+        # Strategy 2: If no direct match, try chromosome-specific matching
+        if position_data.empty and 'chromosome' in self.conservation_data.columns:
+            # Try matching with chromosome prefix
+            chrom_variants = [chromosome, chromosome.replace('chr', ''), f'chr{chromosome.replace("chr", "")}']
+            for chrom_variant in chrom_variants:
+                position_data = self.conservation_data[
+                    (self.conservation_data['chromosome'] == chrom_variant) & 
+                    (self.conservation_data['position'] == position)
+                ].copy()
+                if not position_data.empty:
+                    conservation_result['search_strategy'] = f'chromosome_match_{chrom_variant}'
+                    break
+        
+        # Strategy 3: If still no match, try nearby positions (±5 bp window)
         if position_data.empty:
-            return {
-                'variant_id': variant['variant_id'],
-                'position': position,
-                'conservation_available': False,
-                'message': 'No conservation data available for this position'
-            }
+            nearby_window = 5
+            position_data = self.conservation_data[
+                (self.conservation_data['position'] >= position - nearby_window) &
+                (self.conservation_data['position'] <= position + nearby_window)
+            ].copy()
+            
+            if not position_data.empty:
+                conservation_result['search_strategy'] = f'nearby_window_±{nearby_window}bp'
+                # Calculate distance-weighted scores
+                position_data['distance'] = abs(position_data['position'] - position)
+                position_data['weight'] = 1 / (position_data['distance'] + 1)
         
-        # Analyze conservation across taxonomic groups
-        conservation_analysis = self._analyze_position_conservation(position_data)
-        conservation_analysis.update({
-            'variant_id': variant['variant_id'],
-            'chromosome': variant.get('chromosome'),
-            'position': position,
-            'ref': variant['ref'],
-            'alt': variant['alt'],
-            'conservation_available': True
-        })
+        # If no conservation data found at all
+        if position_data.empty:
+            conservation_result.update({
+                'message': f'No conservation data found for position {position} (searched direct, chromosome-specific, and ±5bp window)',
+                'suggestions': [
+                    'Check if conservation database covers this genomic region',
+                    'Verify chromosome naming convention (chr1 vs 1)',
+                    'Consider using a more comprehensive conservation database'
+                ]
+            })
+            return conservation_result
         
-        return conservation_analysis
+        # Analyze available conservation data
+        conservation_result['conservation_available'] = True
+        conservation_result['data_points'] = len(position_data)
+        
+        # Extract conservation scores
+        score_columns = ['phyloP_score', 'phastCons_score', 'GERP++', 'GERP_score', 'conservation_score']
+        available_scores = {}
+        
+        for score_col in score_columns:
+            if score_col in position_data.columns:
+                scores = position_data[score_col].dropna()
+                if len(scores) > 0:
+                    if 'weight' in position_data.columns:
+                        # Distance-weighted average for nearby positions
+                        weights = position_data.loc[scores.index, 'weight']
+                        weighted_mean = (scores * weights).sum() / weights.sum()
+                        available_scores[score_col] = {
+                            'mean': weighted_mean,
+                            'raw_values': scores.tolist(),
+                            'weights': weights.tolist(),
+                            'calculation': 'distance_weighted'
+                        }
+                    else:
+                        # Direct statistics
+                        available_scores[score_col] = {
+                            'mean': scores.mean(),
+                            'std': scores.std(),
+                            'min': scores.min(),
+                            'max': scores.max(),
+                            'median': scores.median(),
+                            'count': len(scores),
+                            'raw_values': scores.tolist(),
+                            'calculation': 'direct_statistics'
+                        }
+        
+        conservation_result['conservation_scores'] = available_scores
+        
+        # Taxonomic analysis if taxon_group data available
+        if 'taxon_group' in position_data.columns:
+            taxonomic_analysis = self._analyze_position_conservation(position_data)
+            conservation_result['taxonomic_analysis'] = taxonomic_analysis
+        
+        # ACMG interpretation
+        conservation_result['acmg_interpretation'] = self._generate_acmg_interpretation(available_scores)
+        
+        return conservation_result
     
     def _analyze_position_conservation(self, position_data: pd.DataFrame) -> Dict:
         """
@@ -231,6 +399,137 @@ class VariantConservationAnalyzer:
         
         return analysis
     
+    def _generate_acmg_interpretation(self, conservation_scores: Dict) -> Dict:
+        """
+        Generate ACMG PP3/BP4 interpretation based on conservation scores
+        
+        Parameters:
+        -----------
+        conservation_scores : Dict
+            Dictionary of conservation scores with statistics
+            
+        Returns:
+        --------
+        Dict
+            ACMG interpretation with evidence strength
+        """
+        interpretation = {
+            'acmg_criteria': [],
+            'evidence_strength': 'insufficient',
+            'conservation_level': 'unknown',
+            'supporting_evidence': [],
+            'recommendations': [],
+            'score_thresholds': {
+                'phyloP': {'high': 2.0, 'moderate': 0.5, 'low': -1.0},
+                'phastCons': {'high': 0.8, 'moderate': 0.5, 'low': 0.2},
+                'GERP': {'high': 4.0, 'moderate': 2.0, 'low': -2.0}
+            }
+        }
+        
+        # Count evidence for high conservation
+        high_conservation_evidence = 0
+        moderate_conservation_evidence = 0
+        low_conservation_evidence = 0
+        
+        # Analyze phyloP scores
+        phylop_scores = [v for k, v in conservation_scores.items() if 'phylop' in k.lower()]
+        if phylop_scores:
+            phylop_mean = phylop_scores[0]['mean']
+            if phylop_mean > 2.0:
+                high_conservation_evidence += 1
+                interpretation['supporting_evidence'].append(
+                    f"PhyloP score ({phylop_mean:.3f}) indicates strong evolutionary conservation"
+                )
+            elif phylop_mean > 0.5:
+                moderate_conservation_evidence += 1
+                interpretation['supporting_evidence'].append(
+                    f"PhyloP score ({phylop_mean:.3f}) indicates moderate evolutionary conservation"
+                )
+            elif phylop_mean < -1.0:
+                low_conservation_evidence += 1
+                interpretation['supporting_evidence'].append(
+                    f"PhyloP score ({phylop_mean:.3f}) indicates accelerated evolution/low conservation"
+                )
+        
+        # Analyze phastCons scores
+        phastcons_scores = [v for k, v in conservation_scores.items() if 'phastcons' in k.lower()]
+        if phastcons_scores:
+            phastcons_mean = phastcons_scores[0]['mean']
+            if phastcons_mean > 0.8:
+                high_conservation_evidence += 1
+                interpretation['supporting_evidence'].append(
+                    f"phastCons score ({phastcons_mean:.3f}) indicates high conservation probability"
+                )
+            elif phastcons_mean > 0.5:
+                moderate_conservation_evidence += 1
+                interpretation['supporting_evidence'].append(
+                    f"phastCons score ({phastcons_mean:.3f}) indicates moderate conservation probability"
+                )
+            elif phastcons_mean < 0.2:
+                low_conservation_evidence += 1
+                interpretation['supporting_evidence'].append(
+                    f"phastCons score ({phastcons_mean:.3f}) indicates low conservation probability"
+                )
+        
+        # Analyze GERP scores
+        gerp_scores = [v for k, v in conservation_scores.items() if 'gerp' in k.lower()]
+        if gerp_scores:
+            gerp_mean = gerp_scores[0]['mean']
+            if gerp_mean > 4.0:
+                high_conservation_evidence += 1
+                interpretation['supporting_evidence'].append(
+                    f"GERP++ score ({gerp_mean:.3f}) indicates strong evolutionary constraint"
+                )
+            elif gerp_mean > 2.0:
+                moderate_conservation_evidence += 1
+                interpretation['supporting_evidence'].append(
+                    f"GERP++ score ({gerp_mean:.3f}) indicates moderate evolutionary constraint"
+                )
+            elif gerp_mean < -2.0:
+                low_conservation_evidence += 1
+                interpretation['supporting_evidence'].append(
+                    f"GERP++ score ({gerp_mean:.3f}) indicates accelerated evolution"
+                )
+        
+        # Determine overall ACMG interpretation
+        total_scores = len([s for s in conservation_scores.keys()])
+        
+        if high_conservation_evidence >= 2 or (high_conservation_evidence >= 1 and total_scores >= 2):
+            interpretation['acmg_criteria'].append('PP3')
+            interpretation['evidence_strength'] = 'supporting'
+            interpretation['conservation_level'] = 'high'
+            interpretation['recommendations'].append(
+                "Strong conservation evidence supports PP3 (multiple computational evidence supporting deleterious effect)"
+            )
+        elif moderate_conservation_evidence >= 2:
+            interpretation['acmg_criteria'].append('PP3_weak')
+            interpretation['evidence_strength'] = 'weak_supporting'
+            interpretation['conservation_level'] = 'moderate'
+            interpretation['recommendations'].append(
+                "Moderate conservation evidence provides weak support for PP3"
+            )
+        elif low_conservation_evidence >= 2:
+            interpretation['acmg_criteria'].append('BP4')
+            interpretation['evidence_strength'] = 'supporting'
+            interpretation['conservation_level'] = 'low'
+            interpretation['recommendations'].append(
+                "Low conservation evidence supports BP4 (multiple computational evidence suggesting no impact)"
+            )
+        else:
+            interpretation['evidence_strength'] = 'insufficient'
+            interpretation['conservation_level'] = 'unclear'
+            interpretation['recommendations'].append(
+                "Insufficient conservation evidence for reliable ACMG classification"
+            )
+        
+        # Add general recommendations
+        if total_scores < 2:
+            interpretation['recommendations'].append(
+                "Consider obtaining additional conservation scores (phyloP, phastCons, GERP) for more reliable assessment"
+            )
+        
+        return interpretation
+
     def _interpret_conservation_scores(self, stats: Dict) -> Dict:
         """
         Provide interpretation of conservation scores
@@ -296,9 +595,137 @@ class VariantConservationAnalyzer:
         
         return interpretation
     
+    def calculate_consensus_conservation_score(self, conservation_scores: Dict) -> Dict:
+        """
+        Calculate consensus conservation score from multiple metrics with confidence intervals
+        
+        Parameters:
+        -----------
+        conservation_scores : Dict
+            Dictionary containing multiple conservation scores
+            
+        Returns:
+        --------
+        Dict
+            Consensus score with confidence intervals and interpretation
+        """
+        consensus_result = {
+            'consensus_score': None,
+            'confidence_level': 'unknown',
+            'contributing_scores': [],
+            'score_agreement': 'unknown',
+            'confidence_interval': {'lower': None, 'upper': None},
+            'interpretation': 'insufficient_data',
+            'evidence_strength': 'insufficient'
+        }
+        
+        # Normalize scores to common scale (0-1, where 1 = highly conserved)
+        normalized_scores = []
+        score_weights = {
+            'phyloP_score': 0.35,  # High weight for phyloP
+            'phastCons_score': 0.30,  # High weight for phastCons
+            'GERP_score': 0.25,    # Moderate weight for GERP
+            'GERP++': 0.25,        # Same as GERP_score
+            'conservation_score': 0.20  # Lower weight for generic score
+        }
+        
+        for score_name, score_data in conservation_scores.items():
+            if isinstance(score_data, dict) and 'mean' in score_data:
+                raw_score = score_data['mean']
+                weight = score_weights.get(score_name, 0.15)
+                
+                # Normalize different score types to 0-1 scale
+                if 'phylop' in score_name.lower():
+                    # PhyloP: -20 to +10, normalize around 0
+                    normalized = min(1.0, max(0.0, (raw_score + 3) / 8))  # -3 to +5 range
+                elif 'phastcons' in score_name.lower():
+                    # phastCons: already 0-1
+                    normalized = min(1.0, max(0.0, raw_score))
+                elif 'gerp' in score_name.lower():
+                    # GERP: -12 to +6, normalize around 0
+                    normalized = min(1.0, max(0.0, (raw_score + 2) / 8))  # -2 to +6 range
+                else:
+                    # Generic conservation score: assume 0-1 range
+                    normalized = min(1.0, max(0.0, raw_score))
+                
+                normalized_scores.append({
+                    'name': score_name,
+                    'raw_score': raw_score,
+                    'normalized_score': normalized,
+                    'weight': weight,
+                    'count': score_data.get('count', 1)
+                })
+                
+                consensus_result['contributing_scores'].append({
+                    'score_type': score_name,
+                    'raw_value': raw_score,
+                    'normalized_value': normalized,
+                    'weight': weight
+                })
+        
+        if not normalized_scores:
+            return consensus_result
+        
+        # Calculate weighted consensus score
+        total_weight = sum(score['weight'] for score in normalized_scores)
+        if total_weight > 0:
+            weighted_sum = sum(score['normalized_score'] * score['weight'] for score in normalized_scores)
+            consensus_score = weighted_sum / total_weight
+            consensus_result['consensus_score'] = round(consensus_score, 4)
+            
+            # Calculate confidence level based on score agreement
+            score_values = [score['normalized_score'] for score in normalized_scores]
+            score_std = np.std(score_values) if len(score_values) > 1 else 0
+            
+            # Determine confidence level
+            if len(normalized_scores) >= 3:
+                if score_std < 0.15:
+                    consensus_result['confidence_level'] = 'high'
+                    consensus_result['score_agreement'] = 'strong_agreement'
+                elif score_std < 0.25:
+                    consensus_result['confidence_level'] = 'moderate'
+                    consensus_result['score_agreement'] = 'moderate_agreement'
+                else:
+                    consensus_result['confidence_level'] = 'low'
+                    consensus_result['score_agreement'] = 'poor_agreement'
+            elif len(normalized_scores) == 2:
+                if score_std < 0.2:
+                    consensus_result['confidence_level'] = 'moderate'
+                    consensus_result['score_agreement'] = 'good_agreement'
+                else:
+                    consensus_result['confidence_level'] = 'low'
+                    consensus_result['score_agreement'] = 'disagreement'
+            else:
+                consensus_result['confidence_level'] = 'low'
+                consensus_result['score_agreement'] = 'single_score'
+            
+            # Calculate confidence interval (bootstrap-style)
+            if len(score_values) > 1:
+                margin = 1.96 * score_std / np.sqrt(len(score_values))  # 95% CI
+                consensus_result['confidence_interval'] = {
+                    'lower': max(0.0, consensus_score - margin),
+                    'upper': min(1.0, consensus_score + margin)
+                }
+            
+            # Interpret consensus score
+            if consensus_score > 0.8:
+                consensus_result['interpretation'] = 'highly_conserved'
+                consensus_result['evidence_strength'] = 'strong'
+            elif consensus_score > 0.6:
+                consensus_result['interpretation'] = 'moderately_conserved'
+                consensus_result['evidence_strength'] = 'moderate'
+            elif consensus_score > 0.4:
+                consensus_result['interpretation'] = 'weakly_conserved'
+                consensus_result['evidence_strength'] = 'weak'
+            else:
+                consensus_result['interpretation'] = 'poorly_conserved'
+                consensus_result['evidence_strength'] = 'weak_against_conservation'
+        
+        return consensus_result
+    
     def analyze_variant_batch(self, variants: List[Dict]) -> pd.DataFrame:
         """
-        Analyze conservation for multiple variants
+        Analyze conservation for multiple variants with enhanced processing
         
         Parameters:
         -----------
@@ -311,21 +738,139 @@ class VariantConservationAnalyzer:
             Conservation analysis results for all variants
         """
         results = []
+        total_variants = len(variants)
         
-        for variant in variants:
+        for i, variant in enumerate(variants):
             try:
+                # Get basic conservation analysis
                 conservation_result = self.get_conservation_for_variant(variant)
+                
+                # Add consensus scoring if conservation data available
+                if conservation_result.get('conservation_available') and conservation_result.get('conservation_scores'):
+                    consensus_score = self.calculate_consensus_conservation_score(conservation_result['conservation_scores'])
+                    conservation_result['consensus_conservation'] = consensus_score
+                    
+                    # Enhanced ACMG interpretation using consensus score
+                    if consensus_score.get('consensus_score') is not None:
+                        enhanced_acmg = self._enhanced_acmg_interpretation(
+                            conservation_result['conservation_scores'],
+                            consensus_score
+                        )
+                        conservation_result['enhanced_acmg'] = enhanced_acmg
+                
+                conservation_result['processing_order'] = i
                 results.append(conservation_result)
+                
             except Exception as e:
                 self.logger.error(f"Error analyzing variant {variant.get('variant_id', 'unknown')}: {e}")
                 results.append({
                     'variant_id': variant.get('variant_id', 'unknown'),
                     'position': variant.get('position'),
                     'conservation_available': False,
-                    'error': str(e)
+                    'error': str(e),
+                    'processing_order': i
                 })
         
-        return pd.DataFrame(results)
+        # Convert to DataFrame
+        results_df = pd.DataFrame(results)
+        
+        # Add batch-level statistics
+        if len(results_df) > 0:
+            results_df.attrs['batch_stats'] = self._calculate_batch_statistics(results_df)
+        
+        return results_df
+    
+    def _enhanced_acmg_interpretation(self, individual_scores: Dict, consensus_score: Dict) -> Dict:
+        """
+        Enhanced ACMG interpretation using both individual and consensus scores
+        """
+        interpretation = {
+            'primary_criterion': None,
+            'confidence': consensus_score.get('confidence_level', 'unknown'),
+            'evidence_strength': 'insufficient',
+            'supporting_details': [],
+            'recommendations': []
+        }
+        
+        consensus_value = consensus_score.get('consensus_score', 0)
+        confidence_level = consensus_score.get('confidence_level', 'unknown')
+        
+        # Determine ACMG criterion based on consensus score and confidence
+        if consensus_value > 0.8 and confidence_level in ['high', 'moderate']:
+            interpretation['primary_criterion'] = 'PP3'
+            interpretation['evidence_strength'] = 'supporting'
+            interpretation['supporting_details'].append(
+                f"High consensus conservation score ({consensus_value:.3f}) with {confidence_level} confidence"
+            )
+        elif consensus_value > 0.6 and confidence_level == 'high':
+            interpretation['primary_criterion'] = 'PP3_moderate'
+            interpretation['evidence_strength'] = 'moderate_supporting'
+            interpretation['supporting_details'].append(
+                f"Moderate consensus conservation score ({consensus_value:.3f}) with high confidence"
+            )
+        elif consensus_value < 0.3 and confidence_level in ['high', 'moderate']:
+            interpretation['primary_criterion'] = 'BP4'
+            interpretation['evidence_strength'] = 'supporting'
+            interpretation['supporting_details'].append(
+                f"Low consensus conservation score ({consensus_value:.3f}) with {confidence_level} confidence"
+            )
+        else:
+            interpretation['primary_criterion'] = 'insufficient_evidence'
+            interpretation['evidence_strength'] = 'insufficient'
+            interpretation['supporting_details'].append(
+                f"Consensus score {consensus_value:.3f} with {confidence_level} confidence - insufficient for ACMG classification"
+            )
+        
+        # Add recommendations based on score quality
+        if consensus_score.get('score_agreement') == 'poor_agreement':
+            interpretation['recommendations'].append(
+                "Consider additional conservation metrics due to poor agreement between existing scores"
+            )
+        
+        if len(individual_scores) < 2:
+            interpretation['recommendations'].append(
+                "Obtain additional conservation scores (phyloP, phastCons, GERP) for more robust assessment"
+            )
+        
+        return interpretation
+    
+    def _calculate_batch_statistics(self, results_df: pd.DataFrame) -> Dict:
+        """
+        Calculate statistics for the entire batch of analyzed variants
+        """
+        stats = {
+            'total_variants': len(results_df),
+            'conservation_coverage': 0,
+            'acmg_distribution': {},
+            'average_consensus_score': None,
+            'high_confidence_variants': 0
+        }
+        
+        if len(results_df) > 0:
+            # Conservation coverage
+            with_conservation = results_df['conservation_available'].sum()
+            stats['conservation_coverage'] = with_conservation / len(results_df) * 100
+            
+            # Extract consensus scores where available
+            consensus_scores = []
+            high_confidence_count = 0
+            
+            for _, row in results_df.iterrows():
+                if row.get('conservation_available'):
+                    # Try to extract consensus score from the row data
+                    if isinstance(row.get('consensus_conservation'), dict):
+                        consensus_data = row['consensus_conservation']
+                        if consensus_data.get('consensus_score') is not None:
+                            consensus_scores.append(consensus_data['consensus_score'])
+                            if consensus_data.get('confidence_level') == 'high':
+                                high_confidence_count += 1
+            
+            if consensus_scores:
+                stats['average_consensus_score'] = np.mean(consensus_scores)
+                stats['consensus_score_std'] = np.std(consensus_scores)
+                stats['high_confidence_variants'] = high_confidence_count
+        
+        return stats
     
     def export_conservation_report(self, results: pd.DataFrame, output_path: str):
         """

@@ -1,6 +1,6 @@
 ﻿#!/usr/bin/env python3
 """
-TaxoConserv - Taxonomic Conservation Score Analysis Platform
+TaxoConserv - Clinical Variant Conservation Analysis Platform
 Web Interface Module
 
 Copyright 2025 Can Sevilmiş
@@ -122,6 +122,211 @@ except Exception as e:
         return score_options
     def create_demo_data():
         return pd.DataFrame()
+
+# Smart column suggestion functions
+def suggest_grouping_column(data):
+    """Suggest the best column for taxonomic grouping based on column names and data patterns."""
+    if data is None or data.empty:
+        return None
+    
+    # Priority keywords for grouping columns (in order of preference)
+    grouping_keywords = [
+        # Taxonomic terms (highest priority)
+        ['taxon', 'taxonomy', 'taxonomic', 'group', 'clade'],
+        ['species', 'genus', 'family', 'order', 'class', 'phylum'],
+        ['organism', 'taxa', 'lineage', 'phylo'],
+        # General grouping terms
+        ['category', 'type', 'class', 'cluster', 'classification'],
+        ['population', 'sample', 'cohort', 'batch'],
+        # ID columns (lower priority but still useful)
+        ['id', 'identifier', 'name', 'label']
+    ]
+    
+    non_numeric_cols = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
+    
+    # Score columns based on keyword matches and data characteristics
+    scored_columns = []
+    
+    for col in non_numeric_cols:
+        col_lower = col.lower()
+        score = 0
+        priority_level = 10  # Higher priority gets lower number
+        
+        # Check keyword matches with different priority levels
+        for level, keyword_group in enumerate(grouping_keywords):
+            for keyword in keyword_group:
+                if keyword in col_lower:
+                    score += 100 - (level * 10)  # Higher score for higher priority keywords
+                    priority_level = min(priority_level, level)
+                    break
+        
+        # Analyze data characteristics
+        unique_values = data[col].nunique()
+        total_values = len(data[col].dropna())
+        
+        if total_values > 0:
+            # Prefer columns with reasonable number of groups (2-20)
+            if 2 <= unique_values <= 20:
+                score += 50
+            elif unique_values > 20 and unique_values < total_values * 0.8:
+                score += 30  # Many groups but not too many
+            elif unique_values == 1:
+                score -= 100  # Single value columns are useless
+            
+            # Prefer columns with good coverage (few missing values)
+            coverage = total_values / len(data)
+            score += int(coverage * 20)
+            
+            # Prefer columns with string/categorical data
+            if data[col].dtype == 'object':
+                score += 10
+        
+        scored_columns.append((col, score, priority_level, unique_values))
+    
+    # Sort by score (descending) and priority level (ascending)
+    scored_columns.sort(key=lambda x: (-x[1], x[2]))
+    
+    return scored_columns[0][0] if scored_columns else (non_numeric_cols[0] if non_numeric_cols else None)
+
+def suggest_conservation_score_column(data):
+    """Suggest the best column for conservation scores based on column names and data patterns."""
+    if data is None or data.empty:
+        return None
+    
+    # Priority keywords for conservation score columns
+    conservation_keywords = [
+        # Conservation-specific scores (highest priority)
+        ['phylop', 'phylo_p', 'phastcons', 'phast_cons', 'gerp', 'siphy'],
+        ['conservation', 'conserved', 'conserve', 'evolutionary'],
+        # Pathogenicity and functional scores
+        ['cadd', 'revel', 'polyphen', 'sift', 'fathmm', 'metasvm', 'metalr'],
+        ['pathogenic', 'pathogenicity', 'deleteriousness', 'deleterious'],
+        ['functional', 'impact', 'effect', 'damage', 'harmful'],
+        # General scoring terms
+        ['score', 'value', 'metric', 'rating', 'index'],
+        # Statistical/probability terms
+        ['probability', 'likelihood', 'confidence', 'pvalue', 'p_value']
+    ]
+    
+    numeric_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+    
+    # Score columns based on keyword matches and data characteristics
+    scored_columns = []
+    
+    for col in numeric_cols:
+        col_lower = col.lower()
+        score = 0
+        priority_level = 10
+        
+        # Check keyword matches with different priority levels
+        for level, keyword_group in enumerate(conservation_keywords):
+            for keyword in keyword_group:
+                if keyword in col_lower:
+                    score += 100 - (level * 10)
+                    priority_level = min(priority_level, level)
+                    break
+        
+        # Analyze data characteristics
+        col_data = data[col].dropna()
+        if len(col_data) > 0:
+            # Prefer columns with reasonable value ranges
+            data_range = col_data.max() - col_data.min()
+            if data_range > 0:
+                score += 10
+            
+            # Prefer columns with good coverage (few missing values)
+            coverage = len(col_data) / len(data)
+            score += int(coverage * 30)
+            
+            # Prefer floating point numbers (more likely to be scores)
+            if data[col].dtype in ['float64', 'float32']:
+                score += 15
+            
+            # Check if values are in typical score ranges
+            min_val, max_val = col_data.min(), col_data.max()
+            
+            # Common conservation score ranges
+            if -10 <= min_val and max_val <= 10:  # phyloP-like
+                score += 25
+            elif 0 <= min_val and max_val <= 1:   # probability/normalized scores
+                score += 20
+            elif 0 <= min_val and max_val <= 100: # percentage-like or CADD
+                score += 15
+        
+        scored_columns.append((col, score, priority_level))
+    
+    # Sort by score (descending) and priority level (ascending)
+    scored_columns.sort(key=lambda x: (-x[1], x[2]))
+    
+    return scored_columns[0][0] if scored_columns else (numeric_cols[0] if numeric_cols else None)
+
+def get_column_suggestions(data):
+    """Get suggestions for both grouping and score columns with confidence indicators."""
+    if data is None or data.empty:
+        return None, None, {}, {}
+    
+    # Get suggestions
+    suggested_group = suggest_grouping_column(data)
+    suggested_score = suggest_conservation_score_column(data)
+    
+    # Calculate confidence for grouping column
+    group_confidence = {}
+    if suggested_group:
+        non_numeric_cols = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
+        
+        for col in non_numeric_cols[:3]:  # Top 3 candidates
+            col_lower = col.lower()
+            confidence = 0
+            
+            # Keyword-based confidence
+            grouping_keywords_flat = ['taxon', 'group', 'species', 'genus', 'family', 'category', 'type']
+            for keyword in grouping_keywords_flat:
+                if keyword in col_lower:
+                    confidence += 30
+            
+            # Data-based confidence
+            unique_ratio = data[col].nunique() / len(data[col].dropna()) if len(data[col].dropna()) > 0 else 0
+            if 0.1 <= unique_ratio <= 0.8:  # Good grouping ratio
+                confidence += 40
+                
+            coverage = len(data[col].dropna()) / len(data)
+            confidence += int(coverage * 30)
+            
+            group_confidence[col] = min(confidence, 100)
+    
+    # Calculate confidence for score column
+    score_confidence = {}
+    if suggested_score:
+        numeric_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+        
+        for col in numeric_cols[:3]:  # Top 3 candidates
+            col_lower = col.lower()
+            confidence = 0
+            
+            # Keyword-based confidence
+            score_keywords_flat = ['phylop', 'gerp', 'cadd', 'conservation', 'score', 'value']
+            for keyword in score_keywords_flat:
+                if keyword in col_lower:
+                    confidence += 40
+            
+            # Data-based confidence
+            coverage = len(data[col].dropna()) / len(data)
+            confidence += int(coverage * 30)
+            
+            # Range-based confidence
+            col_data = data[col].dropna()
+            if len(col_data) > 0:
+                min_val, max_val = col_data.min(), col_data.max()
+                if -10 <= min_val and max_val <= 10:
+                    confidence += 30
+                elif 0 <= min_val and max_val <= 1:
+                    confidence += 25
+                elif 0 <= min_val and max_val <= 100:
+                    confidence += 20
+            
+            score_confidence[col] = min(confidence, 100)
+    
+    return suggested_group, suggested_score, group_confidence, score_confidence
 
 # Initialize performance optimization
 try:
@@ -429,7 +634,7 @@ def run_taxonomic_analysis():
     # Add legal/about information
     with st.sidebar.expander("⚖️ Legal & About", expanded=False):
         st.markdown("""
-        **TaxoConserv v2.0.0**
+        **TaxoConserv v2.1.0**
         
         **Copyright © 2025 Can Sevilmiş**
         
@@ -473,16 +678,14 @@ def run_taxonomic_analysis():
             from src.input_parser import create_demo_data
             data = create_demo_data()
             st.sidebar.success("✅ Demo data loaded successfully!")
-            st.session_state['group_column'] = 'taxon_group'
             
-            # Detect conservation scores
-            detected_scores = detect_conservation_scores(data)
-            if detected_scores:
-                num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
-                prioritized_scores = prioritize_conservation_scores(num_cols, detected_scores)
-                st.session_state['score_column'] = prioritized_scores[0]
-            else:
-                st.session_state['score_column'] = 'phyloP_score'
+            # Use smart suggestions for demo data
+            suggested_group, suggested_score, _, _ = get_column_suggestions(data)
+            
+            # Set smart defaults or fallback to hardcoded ones
+            st.session_state['group_column'] = suggested_group if suggested_group else 'taxon_group'
+            st.session_state['score_column'] = suggested_score if suggested_score else 'phyloP_score'
+            
         except Exception as e:
             st.error(f"Error loading demo data: {e}")
     
@@ -522,25 +725,33 @@ def run_taxonomic_analysis():
                 st.sidebar.success(f"✅ File '{uploaded_file.name}' loaded successfully!")
                 st.session_state['file_loaded'] = True
                 
-                # Auto-detect columns
-                if 'taxon_group' in data.columns:
+                # Use smart suggestions for uploaded data
+                suggested_group, suggested_score, _, _ = get_column_suggestions(data)
+                
+                # Set smart defaults with fallbacks
+                if suggested_group:
+                    st.session_state['group_column'] = suggested_group
+                elif 'taxon_group' in data.columns:
                     st.session_state['group_column'] = 'taxon_group'
                 else:
                     categorical_cols = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
                     if categorical_cols:
                         st.session_state['group_column'] = categorical_cols[0]
                 
-                # Detect conservation scores
-                detected_scores = detect_conservation_scores(data)
-                if detected_scores:
-                    num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
-                    prioritized_scores = prioritize_conservation_scores(num_cols, detected_scores)
-                    st.session_state['score_column'] = prioritized_scores[0]
-                    st.session_state['detected_conservation_scores'] = detected_scores
+                if suggested_score:
+                    st.session_state['score_column'] = suggested_score
                 else:
-                    num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
-                    if num_cols:
-                        st.session_state['score_column'] = num_cols[0]
+                    # Fallback to old detection method
+                    detected_scores = detect_conservation_scores(data)
+                    if detected_scores:
+                        num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+                        prioritized_scores = prioritize_conservation_scores(num_cols, detected_scores)
+                        st.session_state['score_column'] = prioritized_scores[0]
+                        st.session_state['detected_conservation_scores'] = detected_scores
+                    else:
+                        num_cols = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
+                        if num_cols:
+                            st.session_state['score_column'] = num_cols[0]
             else:
                 st.sidebar.error("❌ File appears to be empty or has no readable columns.")
                 data = None
@@ -767,36 +978,88 @@ def run_taxonomic_analysis():
 
     # All code referencing data, score_column, or group_column is strictly inside this block
     if data is not None:
-        # Single unified configuration sidebar
+        # Single unified configuration sidebar with smart suggestions
         st.sidebar.markdown("---")
         st.sidebar.subheader("📊 Analysis Configuration")
         
-        # Group column selection
+        # Get smart column suggestions
+        suggested_group, suggested_score, group_confidence, score_confidence = get_column_suggestions(data)
+        
+        # Group column selection with smart suggestions
         group_options = [col for col in data.columns if not pd.api.types.is_numeric_dtype(data[col])]
         if not group_options:
             group_options = list(data.columns)
         
+        # Determine default selection with smart suggestion
+        default_group_idx = 0
+        if suggested_group and suggested_group in group_options:
+            default_group_idx = group_options.index(suggested_group)
+        elif st.session_state.get('group_column') and st.session_state.get('group_column') in group_options:
+            saved_group = st.session_state.get('group_column')
+            if saved_group and saved_group in group_options:
+                default_group_idx = group_options.index(saved_group)
+        
+        # Show suggestion info if available
+        if suggested_group and suggested_group in group_confidence:
+            confidence = group_confidence[suggested_group]
+            confidence_color = "🟢" if confidence >= 70 else "🟡" if confidence >= 40 else "🔴"
+            st.sidebar.info(f"{confidence_color} **Suggested**: '{suggested_group}' (confidence: {confidence}%)")
+        
         group_column = st.sidebar.selectbox(
             "Grouping Column",
             options=group_options,
-            index=group_options.index(st.session_state.get('group_column', group_options[0])) if st.session_state.get('group_column') in group_options else 0,
-            help="Select column for taxonomic grouping",
+            index=default_group_idx,
+            help="Select column for taxonomic grouping. Suggestion based on column names and data patterns.",
             key="main_group_column"
         )
         
-        # Score column selection
+        # Score column selection with smart suggestions
         score_options = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col])]
         if score_options:
+            # Determine default selection with smart suggestion
+            default_score_idx = 0
+            if suggested_score and suggested_score in score_options:
+                default_score_idx = score_options.index(suggested_score)
+            elif st.session_state.get('score_column') and st.session_state.get('score_column') in score_options:
+                saved_score = st.session_state.get('score_column')
+                if saved_score and saved_score in score_options:
+                    default_score_idx = score_options.index(saved_score)
+            
+            # Show suggestion info if available
+            if suggested_score and suggested_score in score_confidence:
+                confidence = score_confidence[suggested_score]
+                confidence_color = "🟢" if confidence >= 70 else "🟡" if confidence >= 40 else "🔴"
+                st.sidebar.info(f"{confidence_color} **Suggested**: '{suggested_score}' (confidence: {confidence}%)")
+            
             score_column = st.sidebar.selectbox(
                 "Conservation Score Column",
                 options=score_options,
-                index=score_options.index(st.session_state.get('score_column', score_options[0])) if st.session_state.get('score_column') in score_options else 0,
-                help="Select conservation score to analyze",
+                index=default_score_idx,
+                help="Select conservation score to analyze. Suggestion based on column names and typical score patterns.",
                 key="main_score_column"
             )
         else:
             st.sidebar.error("No numeric columns found for analysis!")
             return
+        
+        # Show column suggestions summary in an expander
+        if group_confidence or score_confidence:
+            with st.sidebar.expander("🤖 Smart Suggestions", expanded=False):
+                st.markdown("**Column Recommendations:**")
+                
+                if group_confidence:
+                    st.markdown("*Grouping Columns:*")
+                    for col, conf in sorted(group_confidence.items(), key=lambda x: x[1], reverse=True)[:3]:
+                        confidence_icon = "🟢" if conf >= 70 else "🟡" if conf >= 40 else "🔴"
+                        st.markdown(f"• {confidence_icon} `{col}` ({conf}%)")
+                
+                if score_confidence:
+                    st.markdown("*Score Columns:*")
+                    for col, conf in sorted(score_confidence.items(), key=lambda x: x[1], reverse=True)[:3]:
+                        confidence_icon = "🟢" if conf >= 70 else "🟡" if conf >= 40 else "🔴"
+                        st.markdown(f"• {confidence_icon} `{col}` ({conf}%)")
+                
+                st.caption("🟢 High confidence (≥70%) • 🟡 Medium confidence (40-69%) • 🔴 Low confidence (<40%)")
         
         # Optional Advanced Options
         with st.sidebar.expander("🔬 Advanced Options", expanded=False):
@@ -823,6 +1086,45 @@ def run_taxonomic_analysis():
             hierarchy = None
         if 'custom_map' not in locals():
             custom_map = None
+        
+        # Detect conservation scores for current data
+        detected_scores = detect_conservation_scores(data) if data is not None else {}
+        
+        # ===== PERFORMANCE OPTIMIZATION FOR LARGE DATASETS =====
+        # Check dataset size and apply intelligent sampling for statistical tests
+        n_rows = len(data)
+        n_groups = data[group_column].nunique()
+        
+        # Performance thresholds
+        LARGE_DATASET_THRESHOLD = 10000
+        VERY_LARGE_DATASET_THRESHOLD = 50000
+        STATISTICAL_SAMPLE_SIZE = 5000  # Maximum sample size for statistical tests
+        
+        # Create optimized dataset for statistical analysis
+        statistical_data = data.copy()
+        statistical_sampling_applied = False
+        
+        if n_rows > LARGE_DATASET_THRESHOLD:
+            # For large datasets, use stratified sampling for statistical tests
+            sample_size_per_group = min(STATISTICAL_SAMPLE_SIZE // n_groups, n_rows // n_groups)
+            
+            if sample_size_per_group < n_rows // n_groups:  # Only sample if necessary
+                try:
+                    # Stratified sampling to maintain group proportions
+                    statistical_data = data.groupby(group_column, group_keys=False).apply(
+                        lambda x: x.sample(min(len(x), sample_size_per_group)) if len(x) > sample_size_per_group else x
+                    ).reset_index(drop=True)
+                    statistical_sampling_applied = True
+                    
+                    # Show sampling info to user
+                    if n_rows > VERY_LARGE_DATASET_THRESHOLD:
+                        st.sidebar.info(f"📊 **Performance Mode**: Using {len(statistical_data):,} samples (from {n_rows:,}) for statistical tests to ensure fast response times.")
+                    
+                except Exception as e:
+                    # Fallback: simple random sampling
+                    statistical_data = data.sample(min(STATISTICAL_SAMPLE_SIZE, n_rows)).reset_index(drop=True)
+                    statistical_sampling_applied = True
+                    st.sidebar.warning(f"⚠️ Using simple random sampling ({len(statistical_data):,} samples) for performance.")
         
         # Continue with rest of analysis based on selected mode...
         
@@ -1019,15 +1321,126 @@ def run_taxonomic_analysis():
         if st.sidebar.button("▶️ Run Analysis", type="primary", disabled=not analysis_enabled, key="main_run_analysis"):
             # Set flag to indicate analysis has been run
             st.session_state['main_run_analysis_pressed'] = True
-            # Get plot settings from Fine Settings or use defaults
-            plot_mode = st.session_state.get('fine_plot_mode', 'Interactive (Plotly)')
-            color_palette = st.session_state.get('color_palette', 'Set3')
-            chart_dpi = 150  # Fixed DPI value
-            interactive_mode = plot_mode == "Interactive (Plotly)"
             
-            # Use optimized chart size for better display
-            chart_width, chart_height = 8, 6
+            # ===== UNIFIED DYNAMIC PROGRESS TRACKING SYSTEM =====
+            # Create a single, persistent progress container
+            main_progress_container = st.container()
             
+            with main_progress_container:
+                # Create main progress interface
+                progress_header = st.empty()
+                main_progress_bar = st.progress(0)
+                progress_status = st.empty()
+                progress_details = st.empty()
+                
+                # Initialize progress
+                progress_header.markdown("### 🚀 **Running Analysis...**")
+                progress_status.info("🔧 **Initializing analysis configuration...**")
+                progress_details.caption("Setting up parameters and validating input data...")
+                main_progress_bar.progress(5)
+                time.sleep(0.3)
+                
+                # Get plot settings from Fine Settings or use defaults
+                plot_mode = st.session_state.get('fine_plot_mode', 'Interactive (Plotly)')
+                color_palette = st.session_state.get('color_palette', 'Set3')
+                chart_dpi = 150  # Fixed DPI value
+                interactive_mode = plot_mode == "Interactive (Plotly)"
+                
+                # Use optimized chart size for better display
+                chart_width, chart_height = 8, 6
+                
+                # Step 1: Data Summary (10%)
+                progress_status.info("� **Generating Data Summary...**")
+                progress_details.caption(f"Processing {len(data):,} rows with {data[group_column].nunique()} groups...")
+                main_progress_bar.progress(10)
+                time.sleep(0.2)
+                
+                # Step 2: Group Statistics (25%)
+                progress_status.info("📈 **Calculating Group Statistics...**")
+                progress_details.caption("Computing statistical summaries for each group...")
+                main_progress_bar.progress(25)
+                group_stats = data.groupby(group_column)[score_column].agg(['count', 'mean', 'std', 'min', 'max']).round(6)
+                time.sleep(0.3)
+                
+                # Step 3: Statistical Analysis (45%)
+                progress_status.info("🧮 **Performing Statistical Tests...**")
+                if statistical_sampling_applied:
+                    progress_details.caption(f"Running Kruskal-Wallis test on {len(statistical_data):,} samples for optimal performance...")
+                else:
+                    progress_details.caption("Running Kruskal-Wallis test and additional statistical tests...")
+                main_progress_bar.progress(45)
+                try:
+                    from src.analysis import perform_statistical_analysis
+                    # Use optimized data for statistical tests to improve performance
+                    stats_results = perform_statistical_analysis(statistical_data, score_column, group_column)
+                    
+                    # Add sampling info to results if applied
+                    if statistical_sampling_applied and stats_results:
+                        stats_results['sampling_applied'] = True
+                        stats_results['sample_size'] = len(statistical_data)
+                        stats_results['original_size'] = n_rows
+                except Exception as e:
+                    stats_results = None
+                time.sleep(0.4)
+                
+                # Step 4: Visualization Preparation (65%)
+                progress_status.info("🎨 **Preparing Visualization...**")
+                progress_details.caption("Setting up chart configuration and data optimization...")
+                main_progress_bar.progress(65)
+                
+                # Performance assessment and intelligent data sampling
+                n_rows = len(data)
+                n_groups = data[group_column].nunique()
+                
+                # Define performance thresholds
+                LARGE_DATASET_THRESHOLD = 10000
+                VERY_LARGE_DATASET_THRESHOLD = 50000
+                MAX_PLOT_POINTS = 5000
+                
+                # Smart data sampling for large datasets
+                plot_data = data.copy()
+                sampling_applied = False
+                performance_warning = False
+                skip_visualization = False
+                
+                time.sleep(0.3)
+                
+                # Step 5: Handle Large Datasets (75%)
+                if n_rows > VERY_LARGE_DATASET_THRESHOLD:
+                    progress_status.warning("⚠️ **Large Dataset Processing...**")
+                    progress_details.caption(f"Optimizing visualization for {n_rows:,} rows...")
+                    main_progress_bar.progress(75)
+                    performance_warning = True
+                elif n_rows > LARGE_DATASET_THRESHOLD:
+                    progress_status.info("📊 **Medium Dataset Processing...**")
+                    progress_details.caption(f"Optimizing performance for {n_rows:,} rows...")
+                    main_progress_bar.progress(75)
+                else:
+                    progress_status.info("✅ **Standard Dataset Processing...**")
+                    progress_details.caption(f"Processing {n_rows:,} rows with standard optimization...")
+                    main_progress_bar.progress(75)
+                
+                time.sleep(0.2)
+                
+                # Step 6: Creating Visualization (90%)
+                if not skip_visualization:
+                    progress_status.info("🎨 **Creating Visualization...**")
+                    progress_details.caption(f"Rendering {plot_type} chart...")
+                    main_progress_bar.progress(90)
+                
+                # Step 7: Finalization (100%)
+                progress_status.success("✅ **Analysis Complete!**")
+                progress_details.caption("All analysis steps completed successfully.")
+                main_progress_bar.progress(100)
+                time.sleep(0.5)
+                
+                # Clear progress interface
+                progress_header.empty()
+                main_progress_bar.empty()
+                progress_status.empty()
+                progress_details.empty()
+            
+            # ===== ACTUAL ANALYSIS RESULTS =====
             # Run the actual analysis
             st.subheader("📊 Data Summary")
             
@@ -1041,18 +1454,18 @@ def run_taxonomic_analysis():
             with col4:
                 st.metric("Missing Values", data[score_column].isnull().sum())
             
-            # Group statistics
+            # Group statistics 
             st.subheader("📈 Group Statistics")
-            group_stats = data.groupby(group_column)[score_column].agg(['count', 'mean', 'std', 'min', 'max']).round(6)
             st.dataframe(group_stats, use_container_width=True)
             
             # Statistical analysis
             st.subheader("🧮 Statistical Analysis")
             try:
-                from src.analysis import perform_statistical_analysis
-                stats_results = perform_statistical_analysis(data, score_column, group_column)
-                
                 if stats_results:
+                    # Show sampling info if applied
+                    if stats_results.get('sampling_applied', False):
+                        st.info(f"⚡ **Performance Optimization**: Statistical tests performed on {stats_results.get('sample_size', 'N/A'):,} stratified samples (from {stats_results.get('original_size', 'N/A'):,} total rows) for faster computation.")
+                    
                     col1, col2 = st.columns(2)
                     with col1:
                         st.metric("Kruskal-Wallis H", f"{float(stats_results['h_statistic']):.6f}")
@@ -1061,6 +1474,8 @@ def run_taxonomic_analysis():
                         significance = "✅ Significant" if stats_results['significant'] else "❌ Not Significant"
                         st.metric("Result", significance)
                         st.metric("Groups Compared", stats_results['n_groups'])
+                else:
+                    st.warning("Statistical analysis could not be performed.")
                         
             except Exception as e:
                 st.warning(f"Statistical analysis not available: {e}")
@@ -1097,24 +1512,82 @@ def run_taxonomic_analysis():
                 # Ask user preference for large datasets
                 plot_choice = st.radio(
                     "Choose visualization approach:",
-                    options=["📊 Aggregated plots only (Recommended)", "📈 Sample data for faster plotting", "⚠️ Plot all data (may be slow)"],
+                    options=[
+                        "📊 Aggregated plots only (Recommended)", 
+                        "📈 Sample data for faster plotting", 
+                        "📋 Statistical summary only (Fastest)",
+                        "⚠️ Plot all data (may be slow)"
+                    ],
                     index=0,
-                    help="Aggregated plots show statistical summaries. Sampling uses a representative subset."
+                    help="Statistical summary shows group comparisons without visualization for maximum speed."
                 )
                 
-                if plot_choice.startswith("📈"):
+                if plot_choice.startswith("📋"):
+                    # Statistics-only mode for very large datasets
+                    st.info("📋 **Statistics-Only Mode**: Showing detailed statistical analysis without visualization for optimal performance.")
+                    
+                    # Enhanced statistical summary for large datasets
+                    st.markdown("### 📊 Comprehensive Statistical Summary")
+                    
+                    # Basic group statistics
+                    group_stats_basic = data.groupby(group_column)[score_column].agg(['count', 'mean', 'median', 'std', 'min', 'max']).round(6)
+                    
+                    # Add quantiles separately
+                    q25_series = data.groupby(group_column)[score_column].quantile(0.25).round(6)
+                    q75_series = data.groupby(group_column)[score_column].quantile(0.75).round(6)
+                    iqr_series = (q75_series - q25_series).round(6)
+                    
+                    # Combine all statistics
+                    group_stats_basic['q25'] = q25_series
+                    group_stats_basic['q75'] = q75_series
+                    group_stats_basic['iqr'] = iqr_series
+                    
+                    st.dataframe(group_stats_basic, use_container_width=True)
+                    
+                    # Effect size calculation (Cohen's d equivalent for non-parametric)
+                    if n_groups == 2:
+                        groups = data[group_column].unique()
+                        group1_data = data[data[group_column] == groups[0]][score_column].dropna()
+                        group2_data = data[data[group_column] == groups[1]][score_column].dropna()
+                        
+                        # Calculate effect size (r = Z / sqrt(N) for Mann-Whitney U)
+                        from scipy.stats import mannwhitneyu
+                        try:
+                            statistic, p_value = mannwhitneyu(group1_data, group2_data, alternative='two-sided')
+                            z_score = abs(statistic - (len(group1_data) * len(group2_data) / 2)) / np.sqrt(len(group1_data) * len(group2_data) * (len(group1_data) + len(group2_data) + 1) / 12)
+                            effect_size = z_score / np.sqrt(len(group1_data) + len(group2_data))
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Mann-Whitney U", f"{statistic:.2f}")
+                            with col2:
+                                st.metric("Effect Size (r)", f"{effect_size:.4f}")
+                            with col3:
+                                effect_interpretation = "Small" if effect_size < 0.3 else "Medium" if effect_size < 0.5 else "Large"
+                                st.metric("Effect Size", effect_interpretation)
+                        except Exception as e:
+                            st.warning(f"Could not calculate effect size: {e}")
+                    
+                    # Skip visualization completely
+                    skip_visualization = True
+                elif plot_choice.startswith("📈"):
                     # Smart stratified sampling to maintain group representation
                     sample_size = min(MAX_PLOT_POINTS, n_rows // 10)
                     plot_data = data.groupby(group_column, group_keys=False).apply(
                         lambda x: x.sample(min(len(x), sample_size // n_groups)) if len(x) > 0 else x
                     ).reset_index(drop=True)
                     sampling_applied = True
+                    skip_visualization = False
                     st.info(f"📊 Using stratified sample: {len(plot_data):,} points (from {n_rows:,} total)")
                 elif plot_choice.startswith("📊"):
                     # Force aggregated plot types only
                     if plot_type in ["scatter", "swarm", "kde", "density"]:
                         plot_type = "barplot"
                         st.info("🔄 Switched to Bar Plot for better performance with large datasets")
+                    skip_visualization = False
+                else:
+                    # Plot all data (risky)
+                    skip_visualization = False
                 
             elif n_rows > LARGE_DATASET_THRESHOLD:
                 # For large datasets (10k-50k), offer sampling option
@@ -1124,6 +1597,7 @@ def run_taxonomic_analysis():
                 Some plot types may render slowly. Consider using sampling for better performance.
                 """)
                 
+                skip_visualization = False
                 if plot_type in ["scatter", "swarm"] and st.checkbox("🚀 Use data sampling for faster plotting", value=True, key="sampling_checkbox"):
                     sample_size = min(MAX_PLOT_POINTS, n_rows // 5)
                     plot_data = data.groupby(group_column, group_keys=False).apply(
@@ -1131,233 +1605,238 @@ def run_taxonomic_analysis():
                     ).reset_index(drop=True)
                     sampling_applied = True
                     st.success(f"✅ Using sample: {len(plot_data):,} points for visualization")
+            else:
+                skip_visualization = False
             
-            try:
-                # Create visualization with performance optimizations
-                import plotly.express as px
-                import plotly.graph_objects as go
-                import time
-                
-                # Start performance timer
+            # Only create visualization if not skipped
+            if not skip_visualization:
+                # Performance timing
                 viz_start_time = time.time()
                 
-                # Show progress for potentially slow operations
+                # Show brief info for large datasets
                 if len(plot_data) > 5000 or plot_type in ["kde", "density"]:
-                    progress_placeholder = st.empty()
-                    progress_placeholder.info("🎨 Creating visualization...")
+                    st.info(f"⚠️ Creating {plot_type} chart with {len(plot_data):,} data points - this may take a moment...")
                 
-                if interactive_mode:
-                    # Optimized interactive plots with plotly
-                    if plot_type == "boxplot":
-                        fig = px.box(plot_data, x=group_column, y=score_column, 
-                                   color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
-                                   title=f"{score_column} by {group_column}")
-                    elif plot_type == "violin":
-                        # Optimize violin plots for large datasets
-                        if len(plot_data) > 10000:
-                            st.info("💡 Large dataset: Using box plot instead of violin for better performance")
-                            fig = px.box(plot_data, x=group_column, y=score_column, 
-                                       color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
-                                       title=f"{score_column} Distribution by {group_column}")
-                        else:
-                            fig = px.violin(plot_data, x=group_column, y=score_column, 
-                                          color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
-                                          title=f"{score_column} Distribution by {group_column}")
-                    elif plot_type == "histogram":
-                        # Optimize histogram bins for large datasets
-                        import numpy as np
-                        optimal_bins = min(50, max(10, int(np.sqrt(len(plot_data)))))
-                        fig = px.histogram(plot_data, x=score_column, color=group_column, 
-                                         color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
-                                         title=f"{score_column} Histogram by {group_column}",
-                                         nbins=optimal_bins)
-                    elif plot_type == "swarm":
-                        # Limit swarm plot size and use strip plot for large data
-                        if len(plot_data) > 2000:
-                            st.info("💡 Large dataset: Using strip plot instead of swarm for better performance")
-                        fig = px.strip(plot_data, x=group_column, y=score_column, 
-                                     color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
-                                     title=f"{score_column} by {group_column}")
-                    elif plot_type == "kde":
-                        # Optimized KDE with reduced resolution for large datasets
-                        fig = go.Figure()
-                        colors = getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3)
-                        
-                        import numpy as np
-                        from scipy.stats import gaussian_kde
-                        
-                        # Reduce KDE resolution for large datasets
-                        kde_resolution = 100 if len(plot_data) < 5000 else 50
-                        
-                        for i, group in enumerate(plot_data[group_column].unique()):
-                            group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
-                            if len(group_data) > 1:
-                                # Sample for KDE if too many points
-                                if len(group_data) > 1000:
-                                    group_data = group_data.sample(1000)
-                                
-                                # Calculate KDE with reduced resolution
-                                kde = gaussian_kde(group_data)
-                                x_range = np.linspace(group_data.min(), group_data.max(), kde_resolution)
-                                y_kde = kde(x_range)
-                                
-                                fig.add_trace(go.Scatter(
-                                    x=x_range,
-                                    y=y_kde,
-                                    mode='lines',
-                                    name=str(group),
-                                    line=dict(color=colors[i % len(colors)], width=3),
-                                    fill='tonexty' if i > 0 else 'tozeroy',
-                                    opacity=0.6
-                                ))
-                        
-                        fig.update_layout(
-                            title=f"{score_column} KDE (Kernel Density Estimation) by {group_column}",
-                            xaxis_title=score_column,
-                            yaxis_title="Density"
-                        )
-                    elif plot_type == "barplot":
-                        # Efficient aggregated bar plot (always fast)
-                        group_means = plot_data.groupby(group_column)[score_column].agg(['mean', 'std']).reset_index()
-                        fig = px.bar(group_means, x=group_column, y='mean', 
-                                   error_y='std',
-                                   color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
-                                   title=f"{score_column} Mean by {group_column}")
-                    elif plot_type == "scatter":
-                        # Optimized scatter with opacity for overlapping points
-                        point_opacity = max(0.1, min(1.0, 500 / len(plot_data)))
-                        fig = px.scatter(plot_data, x=group_column, y=score_column, 
-                                       color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
-                                       title=f"{score_column} Scatter by {group_column}",
-                                       opacity=point_opacity)
-                    elif plot_type == "density":
-                        # Optimized density with reduced bins
-                        fig = go.Figure()
-                        colors = getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3)
-                        import numpy as np
-                        optimal_bins = min(30, max(10, int(np.sqrt(len(plot_data) / n_groups))))
-                        
-                        for i, group in enumerate(plot_data[group_column].unique()):
-                            group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
-                            if len(group_data) > 1:
-                                fig.add_trace(go.Histogram(
-                                    x=group_data, 
-                                    name=str(group), 
-                                    histnorm='probability density',
-                                    opacity=0.6,
-                                    marker_color=colors[i % len(colors)],
-                                    nbinsx=optimal_bins
-                                ))
-                        fig.update_layout(title=f"{score_column} Density Distribution by {group_column}", barmode='overlay')
-                    else:
-                        fig = px.scatter(plot_data, x=group_column, y=score_column, 
-                                       color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
-                                       title=f"{score_column} by {group_column}")
-                    
-                    # Update layout with optimal chart size
-                    fig.update_layout(
-                        xaxis_title=group_column, 
-                        yaxis_title=score_column,
-                        width=chart_width * 80,  # Optimized for better display
-                        height=chart_height * 80,
-                        title_font_size=14,
-                        font_size=11
-                    )
-                    
-                    # Clear progress indicator
-                    if len(plot_data) > 5000 or plot_type in ["kde", "density"]:
-                        progress_placeholder.empty()
-                    
-                    # Use container width for responsive design
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                else:
-                    # Optimized static plots with matplotlib
+                try:
+                    # Import required libraries for visualization
+                    import plotly.express as px
+                    import plotly.graph_objects as go
+                    import plotly.io as pio
                     import matplotlib.pyplot as plt
                     import seaborn as sns
+                    import plotly.express as px
+                    import plotly.graph_objects as go
                     
-                    plt.style.use('default')
-                    fig, ax = plt.subplots(figsize=(chart_width, chart_height), dpi=chart_dpi)
-                    
-                    if plot_type == "boxplot":
-                        sns.boxplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette)
-                    elif plot_type == "violin":
-                        if len(plot_data) > 10000:
-                            st.info("💡 Large dataset: Using box plot instead of violin for better performance")
-                            sns.boxplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette)
+                    # Visualization: Interactive vs Static
+                    if interactive_mode:
+                        st.write("🎨 Creating interactive Plotly visualization...")
+                        # Optimized interactive plots with plotly
+                        if plot_type == "boxplot":
+                            fig = px.box(plot_data, x=group_column, y=score_column, 
+                                       color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                       title=f"{score_column} by {group_column}")
+                        elif plot_type == "violin":
+                            # Optimize violin plots for large datasets
+                            if len(plot_data) > 10000:
+                                st.info("💡 Large dataset: Using box plot instead of violin for better performance")
+                                fig = px.box(plot_data, x=group_column, y=score_column, 
+                                           color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                           title=f"{score_column} Distribution by {group_column}")
+                            else:
+                                fig = px.violin(plot_data, x=group_column, y=score_column, 
+                                              color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                              title=f"{score_column} Distribution by {group_column}")
+                        elif plot_type == "histogram":
+                            # Optimize histogram bins for large datasets
+                            optimal_bins = min(50, max(10, int(np.sqrt(len(plot_data)))))
+                            fig = px.histogram(plot_data, x=score_column, color=group_column, 
+                                             color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                             title=f"{score_column} Histogram by {group_column}",
+                                             nbins=optimal_bins)
+                        elif plot_type == "swarm":
+                            # Limit swarm plot size and use strip plot for large data
+                            if len(plot_data) > 2000:
+                                st.info("💡 Large dataset: Using strip plot instead of swarm for better performance")
+                            fig = px.strip(plot_data, x=group_column, y=score_column, 
+                                         color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                         title=f"{score_column} by {group_column}")
+                        elif plot_type == "kde":
+                            # Optimized KDE with reduced resolution for large datasets
+                            fig = go.Figure()
+                            colors = getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3)
+                            from scipy.stats import gaussian_kde
+                            
+                            # Reduce KDE resolution for large datasets
+                            kde_resolution = 100 if len(plot_data) < 5000 else 50
+                            
+                            for i, group in enumerate(plot_data[group_column].unique()):
+                                group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
+                                if len(group_data) > 1:
+                                    # Sample for KDE if too many points
+                                    if len(group_data) > 1000:
+                                        group_data = group_data.sample(1000)
+                                    
+                                    # Calculate KDE with reduced resolution
+                                    kde = gaussian_kde(group_data)
+                                    x_range = np.linspace(group_data.min(), group_data.max(), kde_resolution)
+                                    y_kde = kde(x_range)
+                                    
+                                    fig.add_trace(go.Scatter(
+                                        x=x_range,
+                                        y=y_kde,
+                                        mode='lines',
+                                        name=str(group),
+                                        line=dict(color=colors[i % len(colors)], width=3),
+                                        fill='tonexty' if i > 0 else 'tozeroy',
+                                        opacity=0.6
+                                    ))
+                            
+                            fig.update_layout(
+                                title=f"{score_column} KDE (Kernel Density Estimation) by {group_column}",
+                                xaxis_title=score_column,
+                                yaxis_title="Density"
+                            )
+                        elif plot_type == "barplot":
+                            # Efficient aggregated bar plot (always fast)
+                            group_means = plot_data.groupby(group_column)[score_column].agg(['mean', 'std']).reset_index()
+                            fig = px.bar(group_means, x=group_column, y='mean', 
+                                       error_y='std',
+                                       color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                       title=f"{score_column} Mean by {group_column}")
+                        elif plot_type == "scatter":
+                            # Optimized scatter with opacity for overlapping points
+                            point_opacity = max(0.1, min(1.0, 500 / len(plot_data)))
+                            fig = px.scatter(plot_data, x=group_column, y=score_column, 
+                                           color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                           title=f"{score_column} Scatter by {group_column}",
+                                           opacity=point_opacity)
+                        elif plot_type == "density":
+                            # Optimized density with reduced bins
+                            fig = go.Figure()
+                            colors = getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3)
+                            optimal_bins = min(30, max(10, int(np.sqrt(len(plot_data) / n_groups))))
+                            
+                            for i, group in enumerate(plot_data[group_column].unique()):
+                                group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
+                                if len(group_data) > 1:
+                                    fig.add_trace(go.Histogram(
+                                        x=group_data, 
+                                        name=str(group), 
+                                        histnorm='probability density',
+                                        opacity=0.6,
+                                        marker_color=colors[i % len(colors)],
+                                        nbinsx=optimal_bins
+                                    ))
+                            fig.update_layout(title=f"{score_column} Density Distribution by {group_column}", barmode='overlay')
                         else:
-                            sns.violinplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette)
-                    elif plot_type == "histogram":
-                        import numpy as np
-                        optimal_bins = min(50, max(10, int(np.sqrt(len(plot_data)))))
-                        for i, group in enumerate(plot_data[group_column].unique()):
-                            group_data = plot_data[plot_data[group_column] == group][score_column]
-                            ax.hist(group_data, alpha=0.7, label=group, bins=optimal_bins)
-                        ax.legend()
-                    elif plot_type == "swarm":
-                        # Use stripplot for large datasets
-                        sns.stripplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette, alpha=0.7)
-                    elif plot_type == "kde":
-                        for group in plot_data[group_column].unique():
-                            group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
-                            if len(group_data) > 1000:
-                                group_data = group_data.sample(1000)  # Sample for performance
-                            if len(group_data) > 1:
-                                sns.kdeplot(group_data, label=group, ax=ax)
-                        ax.legend()
-                    elif plot_type == "barplot":
-                        sns.barplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette, errorbar='sd')
-                    elif plot_type == "scatter":
-                        point_alpha = max(0.1, min(1.0, 500 / len(plot_data)))
-                        sns.stripplot(data=plot_data, x=group_column, y=score_column, ax=ax, palette=color_palette, size=8, alpha=point_alpha)
-                    elif plot_type == "density":
-                        for group in plot_data[group_column].unique():
-                            group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
-                            if len(group_data) > 1:
-                                sns.histplot(group_data, kde=True, stat="density", alpha=0.6, label=str(group), ax=ax, bins='auto')
-                        ax.legend()
-                    
-                    ax.set_title(f"{score_column} by {group_column}")
-                    ax.set_xlabel(group_column)
-                    ax.set_ylabel(score_column)
-                    plt.xticks(rotation=45)
-                    plt.tight_layout()
-                    
-                    # Clear progress indicator
-                    if len(plot_data) > 5000 or plot_type in ["kde", "density"]:
-                        progress_placeholder.empty()
-                    
-                    st.pyplot(fig, use_container_width=True)
-                
-                # Performance summary
-                viz_time = time.time() - viz_start_time
-                if sampling_applied:
-                    st.caption(f"⚡ Visualization completed in {viz_time:.2f}s using {len(plot_data):,} sample points (from {n_rows:,} total)")
-                elif viz_time > 2:
-                    st.caption(f"🕐 Visualization completed in {viz_time:.2f}s")
-                
-                # Performance tips for future use
-                if performance_warning and not sampling_applied:
-                    with st.expander("💡 Performance Tips for Large Datasets", expanded=False):
-                        st.markdown("""
-                        **For faster visualization with large datasets:**
+                            fig = px.scatter(plot_data, x=group_column, y=score_column, 
+                                           color=group_column, color_discrete_sequence=getattr(px.colors.qualitative, color_palette, px.colors.qualitative.Set3),
+                                           title=f"{score_column} by {group_column}")
                         
-                        1. **📊 Use aggregated plots**: Bar plots, histograms are always fast
-                        2. **🎯 Enable data sampling**: Maintains statistical patterns while improving speed
-                        3. **⚡ Avoid point-based plots**: Scatter and swarm plots slow down with many points
-                        4. **🔢 Consider statistical summaries**: Group statistics often more informative than individual points
-                        5. **📈 Interactive mode**: Plotly generally handles large data better than matplotlib
-                        """)
+                        # Update layout with optimal chart size
+                        fig.update_layout(
+                            xaxis_title=group_column, 
+                            yaxis_title=score_column,
+                            width=chart_width * 80,  # Optimized for better display
+                            height=chart_height * 80,
+                            title_font_size=14,
+                            font_size=11
+                        )
                         
-            except Exception as e:
-                st.error(f"Visualization error: {e}")
-                st.info("💡 Try using a different plot type or enable data sampling for large datasets.")
-                
-                # Fallback: Offer simple statistical summary instead
-                if len(data) > LARGE_DATASET_THRESHOLD:
-                    st.markdown("### 📊 Statistical Summary (Fallback)")
-                    summary_stats = data.groupby(group_column)[score_column].agg(['count', 'mean', 'std', 'min', 'max']).round(4)
-                    st.dataframe(summary_stats, use_container_width=True)
+                    else:
+                        # Import matplotlib and seaborn for static plots
+                        plt.style.use('default')
+                        fig_plt, ax = plt.subplots(figsize=(chart_width, chart_height), dpi=chart_dpi)
+                        
+                        if plot_type == "boxplot":
+                            sns.boxplot(data=plot_data, x=group_column, y=score_column, hue=group_column, ax=ax, palette=color_palette, legend=False)
+                        elif plot_type == "violin":
+                            if len(plot_data) > 10000:
+                                st.info("💡 Large dataset: Using box plot instead of violin for better performance")
+                                sns.boxplot(data=plot_data, x=group_column, y=score_column, hue=group_column, ax=ax, palette=color_palette, legend=False)
+                            else:
+                                sns.violinplot(data=plot_data, x=group_column, y=score_column, hue=group_column, ax=ax, palette=color_palette, legend=False)
+                        elif plot_type == "histogram":
+                            optimal_bins = min(50, max(10, int(np.sqrt(len(plot_data)))))
+                            try:
+                                colors = plt.cm.get_cmap(color_palette)
+                            except:
+                                colors = plt.cm.get_cmap('Set3')  # Fallback colormap
+                            for i, group in enumerate(plot_data[group_column].unique()):
+                                group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
+                                if len(group_data) > 0:
+                                    color_idx = i / max(1, len(plot_data[group_column].unique()) - 1)
+                                    ax.hist(group_data, alpha=0.7, label=str(group), bins=optimal_bins, 
+                                           color=colors(color_idx))
+                            ax.legend()
+                            ax.set_xlabel(score_column)
+                            ax.set_ylabel("Frequency")
+                        elif plot_type == "swarm":
+                            # Use stripplot for large datasets
+                            sns.stripplot(data=plot_data, x=group_column, y=score_column, hue=group_column, ax=ax, palette=color_palette, alpha=0.7, legend=False)
+                        elif plot_type == "kde":
+                            for group in plot_data[group_column].unique():
+                                group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
+                                if len(group_data) > 1000:
+                                    group_data = group_data.sample(1000)  # Sample for performance
+                                if len(group_data) > 1:
+                                    sns.kdeplot(group_data, label=group, ax=ax)
+                            ax.legend()
+                        elif plot_type == "barplot":
+                            sns.barplot(data=plot_data, x=group_column, y=score_column, hue=group_column, ax=ax, palette=color_palette, errorbar='sd', legend=False)
+                        elif plot_type == "scatter":
+                            point_alpha = max(0.1, min(1.0, 500 / len(plot_data)))
+                            sns.stripplot(data=plot_data, x=group_column, y=score_column, hue=group_column, ax=ax, palette=color_palette, size=8, alpha=point_alpha, legend=False)
+                        elif plot_type == "density":
+                            for group in plot_data[group_column].unique():
+                                group_data = plot_data[plot_data[group_column] == group][score_column].dropna()
+                                if len(group_data) > 1:
+                                    sns.histplot(group_data, kde=True, stat="density", alpha=0.6, label=str(group), ax=ax, bins='auto')
+                            ax.legend()
+                        
+                        ax.set_title(f"{score_column} by {group_column}")
+                        ax.set_xlabel(group_column)
+                        ax.set_ylabel(score_column)
+                        plt.xticks(rotation=45)
+                        plt.tight_layout()
+                    
+                    # Performance summary
+                    viz_time = time.time() - viz_start_time
+                    if sampling_applied:
+                        st.success(f"⚡ Visualization completed in {viz_time:.2f}s using {len(plot_data):,} sample points (from {n_rows:,} total)")
+                    elif viz_time > 2:
+                        st.info(f"🕐 Visualization completed in {viz_time:.2f}s")
+                    else:
+                        st.success(f"✅ Visualization completed successfully in {viz_time:.2f}s")
+                    
+                except Exception as viz_error:
+                    st.error(f"❌ Visualization error: {viz_error}")
+                    st.info("💡 Try using a different plot type or enable data sampling for large datasets.")
+                    
+                    # Fallback: Offer simple statistical summary instead
+                    if len(data) > LARGE_DATASET_THRESHOLD:
+                        st.markdown("### 📊 Statistical Summary (Fallback)")
+                        summary_stats = data.groupby(group_column)[score_column].agg(['count', 'mean', 'std', 'min', 'max']).round(4)
+                        st.dataframe(summary_stats, use_container_width=True)
+            
+            # Display the final visualization
+            if 'fig' in locals() and interactive_mode:
+                st.plotly_chart(fig, use_container_width=True)
+            elif 'fig_plt' in locals() and not interactive_mode:
+                st.pyplot(fig_plt, use_container_width=True)
+            
+            # Performance tips for future use
+            if performance_warning and not sampling_applied:
+                with st.expander("💡 Performance Tips for Large Datasets", expanded=False):
+                    st.markdown("""
+                    **For faster visualization with large datasets:**
+                    
+                    1. **📊 Use aggregated plots**: Bar plots, histograms are always fast
+                    2. **🎯 Enable data sampling**: Maintains statistical patterns while improving speed
+                    3. **⚡ Avoid point-based plots**: Scatter and swarm plots slow down with many points
+                    4. **🔢 Consider statistical summaries**: Group statistics often more informative than individual points
+                    5. **📈 Interactive mode**: Plotly generally handles large data better than matplotlib
+                    """)
             
             # Detailed Statistical Results Panel (if enabled)
             if show_statistics and stats_results:
@@ -1381,14 +1860,47 @@ def run_taxonomic_analysis():
                     significance_icon = "✅" if stats_results['significant'] else "❌"
                     significance_text = "Significant difference detected!" if stats_results['significant'] else "No significant difference found."
                     
+                    # Adaptive styling for dark/light theme
                     st.markdown(f"""
-                    <div style='background-color: #f0f2f6; padding: 1rem; border-radius: 8px; border-left: 4px solid #1f77b4;'>
+                    <div style='
+                        background-color: var(--background-color, #f0f2f6); 
+                        padding: 1rem; 
+                        border-radius: 8px; 
+                        border-left: 4px solid #1f77b4;
+                        border: 1px solid var(--border-color, #e0e0e0);
+                    '>
                         <h4 style='margin: 0 0 0.5rem 0; color: #1f77b4;'>{significance_icon} Test Results</h4>
-                        <p style='margin: 0;'><strong>H-statistic:</strong> {float(stats_results['h_statistic']):.6f}</p>
-                        <p style='margin: 0;'><strong>p-value:</strong> {float(stats_results['p_value']):.8f}</p>
-                        <p style='margin: 0;'><strong>Degrees of freedom:</strong> {stats_results['n_groups'] - 1}</p>
-                        <p style='margin: 0.5rem 0 0 0; font-weight: bold;'>{significance_text}</p>
+                        <p style='margin: 0; color: var(--text-color, #262730);'><strong>H-statistic:</strong> {float(stats_results['h_statistic']):.6f}</p>
+                        <p style='margin: 0; color: var(--text-color, #262730);'><strong>p-value:</strong> {float(stats_results['p_value']):.8f}</p>
+                        <p style='margin: 0; color: var(--text-color, #262730);'><strong>Degrees of freedom:</strong> {stats_results['n_groups'] - 1}</p>
+                        {'<p style="margin: 0; color: var(--text-color, #262730);"><strong>Sample size:</strong> ' + f"{stats_results.get('sample_size', 'N/A'):,} (stratified from {stats_results.get('original_size', 'N/A'):,})" + '</p>' if stats_results.get('sampling_applied', False) else ''}
+                        <p style='margin: 0.5rem 0 0 0; font-weight: bold; color: var(--text-color, #262730);'>{significance_text}</p>
                     </div>
+                    
+                    <style>
+                    /* Dark theme adaptation */
+                    @media (prefers-color-scheme: dark) {{
+                        :root {{
+                            --background-color: #2d3142;
+                            --text-color: #ffffff;
+                            --border-color: #4a4e69;
+                        }}
+                    }}
+                    /* Light theme (default) */
+                    @media (prefers-color-scheme: light) {{
+                        :root {{
+                            --background-color: #f0f2f6;
+                            --text-color: #262730;
+                            --border-color: #e0e0e0;
+                        }}
+                    }}
+                    /* Streamlit dark theme detection */
+                    .stApp[data-theme="dark"] {{
+                        --background-color: #2d3142;
+                        --text-color: #ffffff;
+                        --border-color: #4a4e69;
+                    }}
+                    </style>
                     """, unsafe_allow_html=True)
                     
                     if stats_results['significant']:
@@ -1399,30 +1911,83 @@ def run_taxonomic_analysis():
                     # Section 2: Post-hoc Dunn Test
                     st.markdown("### 🔬 Post-hoc Analysis")
                     with st.expander("Pairwise Group Comparisons (Dunn Test)", expanded=False):
+                        # Use statistical_data for post-hoc analysis to maintain performance
+                        analysis_data = statistical_data if statistical_sampling_applied else data
+                        
+                        if statistical_sampling_applied:
+                            st.info(f"⚡ Post-hoc analysis performed on {len(analysis_data):,} stratified samples for optimal performance.")
+                        
                         try:
                             import scikit_posthocs as sp # type: ignore
-                            dunn_results = sp.posthoc_dunn(data, val_col=score_column, group_col=group_column, p_adjust='bonferroni')
+                            dunn_results = sp.posthoc_dunn(analysis_data, val_col=score_column, group_col=group_column, p_adjust='bonferroni')
                             # Format the results for better display
                             dunn_formatted = dunn_results.round(8)  # Round to 8 decimal places
-                            # Replace very small values with scientific notation
-                            dunn_formatted = dunn_formatted.applymap(lambda x: f"{x:.2e}" if x < 0.001 and x != 0 else f"{x:.6f}")
+                            # Replace very small values with scientific notation (using map instead of applymap)
+                            dunn_formatted = dunn_formatted.map(lambda x: f"{x:.2e}" if x < 0.001 and x != 0 else f"{x:.6f}")
                             st.dataframe(dunn_formatted, use_container_width=True)
                             st.caption("📝 Values show p-values for pairwise comparisons (Bonferroni corrected). Lower values indicate stronger evidence of difference.")
                         except ImportError:
                             st.warning("⚠️ **scikit-posthocs** package is not installed.")
-                            st.code("pip install scikit-posthocs", language="bash")
+                            st.info("""
+                            **To install the optional package for advanced post-hoc tests:**
+                            ```bash
+                            pip install scikit-posthocs
+                            ```
+                            
+                            **Alternative:** You can perform manual pairwise comparisons using built-in methods:
+                            """)
+                            
+                            # Manual pairwise comparison fallback
+                            st.markdown("**Manual Pairwise Comparisons (Mann-Whitney U):**")
+                            from scipy.stats import mannwhitneyu
+                            from itertools import combinations
+                            
+                            groups = analysis_data[group_column].unique()
+                            pairwise_results = []
+                            
+                            for group1, group2 in combinations(groups, 2):
+                                if pd.notna(group1) and pd.notna(group2):
+                                    data1 = analysis_data[analysis_data[group_column] == group1][score_column].dropna()
+                                    data2 = analysis_data[analysis_data[group_column] == group2][score_column].dropna()
+                                    
+                                    if len(data1) > 0 and len(data2) > 0:
+                                        try:
+                                            statistic, p_value = mannwhitneyu(data1, data2, alternative='two-sided')
+                                            pairwise_results.append({
+                                                'Group 1': str(group1),
+                                                'Group 2': str(group2),
+                                                'Mann-Whitney U': f"{statistic:.2f}",
+                                                'p-value': f"{p_value:.6f}",
+                                                'Significant (p<0.05)': "✅" if p_value < 0.05 else "❌"
+                                            })
+                                        except Exception as e:
+                                            st.warning(f"Could not compare {group1} vs {group2}: {e}")
+                            
+                            if pairwise_results:
+                                pairwise_df = pd.DataFrame(pairwise_results)
+                                st.dataframe(pairwise_df, use_container_width=True)
+                                st.caption("📝 Manual pairwise comparisons using Mann-Whitney U test (no multiple comparison correction).")
+                            else:
+                                st.warning("Could not perform pairwise comparisons.")
                         except Exception as e:
                             st.error(f"Error running post-hoc test: {e}")
+                            st.info("💡 Try installing scikit-posthocs: `pip install scikit-posthocs`")
                 
                 with col2:
                     # Section 3: Outlier Detection
                     st.markdown("### 🔎 Data Quality Checks")
                     
                     with st.expander("Outlier Detection (IQR Method)", expanded=True):
+                        # Use appropriate data for outlier analysis
+                        outlier_analysis_data = statistical_data if statistical_sampling_applied and len(statistical_data) > 1000 else data
+                        
+                        if statistical_sampling_applied and outlier_analysis_data is statistical_data:
+                            st.caption(f"⚡ Outlier analysis on {len(outlier_analysis_data):,} samples for performance.")
+                        
                         outlier_info = {}
-                        for group in data[group_column].unique():
+                        for group in outlier_analysis_data[group_column].unique():
                             if pd.notna(group):
-                                vals = data[data[group_column] == group][score_column].dropna()
+                                vals = outlier_analysis_data[outlier_analysis_data[group_column] == group][score_column].dropna()
                                 q1 = vals.quantile(0.25)
                                 q3 = vals.quantile(0.75)
                                 iqr = q3 - q1
@@ -1444,11 +2009,21 @@ def run_taxonomic_analysis():
                     # Section 4: Normality Test
                     with st.expander("Normality Test (Shapiro-Wilk)", expanded=True):
                         from scipy.stats import shapiro
+                        
+                        # Use appropriate data for normality testing (limit sample size for performance)
+                        normality_analysis_data = statistical_data if statistical_sampling_applied else data
+                        
+                        if statistical_sampling_applied:
+                            st.caption(f"⚡ Normality test on {len(normality_analysis_data):,} samples for performance.")
+                        
                         normality_results = {}
-                        for group in data[group_column].unique():
+                        for group in normality_analysis_data[group_column].unique():
                             if pd.notna(group):
-                                vals = data[data[group_column] == group][score_column].dropna()
+                                vals = normality_analysis_data[normality_analysis_data[group_column] == group][score_column].dropna()
                                 if len(vals) >= 3:
+                                    # For very large groups, sample for Shapiro-Wilk (which has limits)
+                                    if len(vals) > 5000:
+                                        vals = vals.sample(5000)
                                     stat, pval = shapiro(vals)
                                     is_normal = "Yes" if pval > 0.05 else "No"
                                     normality_results[group] = {
@@ -1872,8 +2447,8 @@ def run_taxonomic_analysis():
                                         dunn_results = sp.posthoc_dunn(data, val_col=score_column, group_col=group_column, p_adjust='bonferroni')
                                         # Format the results for better display
                                         dunn_formatted = dunn_results.round(8)  # Round to 8 decimal places
-                                        # Replace very small values with scientific notation
-                                        dunn_formatted = dunn_formatted.applymap(lambda x: f"{x:.2e}" if x < 0.001 and x != 0 else f"{x:.6f}")
+                                        # Replace very small values with scientific notation (using map instead of applymap)
+                                        dunn_formatted = dunn_formatted.map(lambda x: f"{x:.2e}" if x < 0.001 and x != 0 else f"{x:.6f}")
                                         st.dataframe(dunn_formatted, use_container_width=True)
                                     except ImportError:
                                         st.warning("scikit-posthocs package is not installed. To use the post-hoc Dunn test, run 'pip install scikit-posthocs'.")
@@ -2380,16 +2955,39 @@ def run_variant_analysis():
     
     # Handle sample VCF data loading
     variant_data = None
+    conservation_database = None
+    
     if st.session_state.get('vcf_sample_loaded', False):
         try:
-            from src.input_parser import create_sample_vcf_data
-            variant_data = create_sample_vcf_data()
-            st.success("✅ Sample VCF data loaded successfully!")
-            st.info(f"📊 Loaded {len(variant_data)} sample variants with conservation scores")
+            # Load sample VCF data
+            with st.spinner("Loading sample VCF data..."):
+                from src.input_parser import create_sample_vcf_data, create_demo_data
+                variant_data = create_sample_vcf_data()
+                
+                # Also load compatible conservation database
+                conservation_database = create_demo_data()
+                
+                # Ensure position compatibility
+                if variant_data is not None and conservation_database is not None:
+                    # Align conservation data positions with VCF positions for demonstration
+                    vcf_positions = variant_data['POS'].tolist()[:20]  # Take first 20 VCF positions
+                    
+                    # Create aligned conservation data
+                    aligned_conservation = conservation_database.copy()
+                    aligned_conservation['position'] = np.tile(vcf_positions, 
+                                                             (len(aligned_conservation) // len(vcf_positions)) + 1)[:len(aligned_conservation)]
+                    
+                    conservation_database = aligned_conservation
+                
+            st.success("✅ Sample VCF data and conservation database loaded successfully!")
+            st.info(f"📊 Loaded {len(variant_data)} sample variants with {len(conservation_database)} conservation data points")
+            
+            # Clear the flag
+            st.session_state['vcf_sample_loaded'] = False
+            
         except Exception as e:
             st.error(f"Error loading sample VCF data: {e}")
-    
-    # Display variant data analysis
+            st.session_state['vcf_sample_loaded'] = False    # Display variant data analysis
     if variant_data is not None:
         st.subheader("📊 Variant Conservation Analysis")
         
@@ -2442,6 +3040,120 @@ def run_variant_analysis():
         if st.button("🔍 Analyze Conservation Patterns", type="primary", key="variant_conservation_analysis_button"):
             st.subheader("📈 Conservation Score Analysis")
             
+            with st.spinner("Analyzing variant conservation patterns..."):
+                
+                # Initialize variant analyzer for comprehensive analysis
+                try:
+                    from src.variant_analysis import VariantConservationAnalyzer
+                    analyzer = VariantConservationAnalyzer(conservation_database)
+                    
+                    # Convert variant data to analyzer format
+                    variants_for_analysis = []
+                    for _, row in filtered_data.iterrows():
+                        variant = {
+                            'chromosome': row['CHROM'],
+                            'position': row['POS'],
+                            'ref': row['REF'],
+                            'alt': [row['ALT']] if isinstance(row['ALT'], str) else row['ALT'],
+                            'variant_id': f"{row['CHROM']}:{row['POS']}:{row['REF']}:{row['ALT']}"
+                        }
+                        variants_for_analysis.append(variant)
+                    
+                    # Perform batch conservation analysis
+                    conservation_results = []
+                    for variant in variants_for_analysis:
+                        result = analyzer.get_conservation_for_variant(variant)
+                        conservation_results.append(result)
+                    
+                    # Display ACMG interpretation summary with enhanced metrics
+                    st.subheader("🏥 ACMG Clinical Interpretation")
+                    
+                    acmg_summary = {'PP3': 0, 'PP3_weak': 0, 'BP4': 0, 'insufficient': 0}
+                    consensus_scores = []
+                    high_confidence_variants = 0
+                    
+                    for result in conservation_results:
+                        if result.get('conservation_available'):
+                            # Check for enhanced ACMG interpretation
+                            enhanced_acmg = result.get('enhanced_acmg', {})
+                            if enhanced_acmg:
+                                criterion = enhanced_acmg.get('primary_criterion', 'insufficient_evidence')
+                                if criterion == 'PP3':
+                                    acmg_summary['PP3'] += 1
+                                elif criterion in ['PP3_moderate', 'PP3_weak']:
+                                    acmg_summary['PP3_weak'] += 1
+                                elif criterion == 'BP4':
+                                    acmg_summary['BP4'] += 1
+                                else:
+                                    acmg_summary['insufficient'] += 1
+                            else:
+                                # Fallback to basic ACMG interpretation
+                                acmg_criteria = result.get('acmg_interpretation', {}).get('acmg_criteria', [])
+                                if 'PP3' in acmg_criteria:
+                                    acmg_summary['PP3'] += 1
+                                elif 'PP3_weak' in acmg_criteria:
+                                    acmg_summary['PP3_weak'] += 1
+                                elif 'BP4' in acmg_criteria:
+                                    acmg_summary['BP4'] += 1
+                                else:
+                                    acmg_summary['insufficient'] += 1
+                            
+                            # Collect consensus scores
+                            consensus_data = result.get('consensus_conservation', {})
+                            if consensus_data.get('consensus_score') is not None:
+                                consensus_scores.append(consensus_data['consensus_score'])
+                                if consensus_data.get('confidence_level') == 'high':
+                                    high_confidence_variants += 1
+                        else:
+                            acmg_summary['insufficient'] += 1
+                    
+                    # Display enhanced metrics
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("🔴 PP3 (Strong Conservation)", acmg_summary['PP3'])
+                    with col2:
+                        st.metric("🟡 PP3 Weak (Moderate)", acmg_summary['PP3_weak'])
+                    with col3:
+                        st.metric("🟢 BP4 (Low Conservation)", acmg_summary['BP4'])
+                    with col4:
+                        st.metric("⚪ Insufficient Evidence", acmg_summary['insufficient'])
+                    
+                    # Additional consensus score metrics
+                    if consensus_scores:
+                        st.markdown("### 📊 Consensus Conservation Analysis")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            avg_consensus = np.mean(consensus_scores)
+                            st.metric("Average Consensus Score", f"{avg_consensus:.3f}")
+                        with col2:
+                            st.metric("High Confidence Variants", high_confidence_variants)
+                        with col3:
+                            coverage = len(consensus_scores) / len(conservation_results) * 100
+                            st.metric("Analysis Coverage", f"{coverage:.1f}%")
+                        
+                        # Consensus score distribution
+                        if len(consensus_scores) > 1:
+                            fig = px.histogram(
+                                x=consensus_scores, 
+                                nbins=20,
+                                title="Consensus Conservation Score Distribution",
+                                labels={'x': 'Consensus Score', 'y': 'Count'}
+                            )
+                            
+                            # Add interpretation threshold lines
+                            fig.add_vline(x=0.8, line_dash="dash", line_color="red", 
+                                        annotation_text="High Conservation (0.8)")
+                            fig.add_vline(x=0.6, line_dash="dash", line_color="orange", 
+                                        annotation_text="Moderate (0.6)")
+                            fig.add_vline(x=0.3, line_dash="dash", line_color="green", 
+                                        annotation_text="Low Conservation (0.3)")
+                            
+                            st.plotly_chart(fig, use_container_width=True)
+                    
+                except Exception as e:
+                    st.warning(f"Advanced analysis unavailable: {e}")
+                    st.info("Showing basic conservation analysis...")
+            
             # Conservation score distributions
             conservation_cols = ['phyloP_score', 'GERP_score', 'phastCons_score']
             available_conservation_cols = [col for col in conservation_cols if col in filtered_data.columns]
@@ -2451,19 +3163,42 @@ def run_variant_analysis():
                 for score_col in available_conservation_cols:
                     st.markdown(f"**{score_col} Distribution**")
                     
-                    # Box plot by pathogenicity
-                    if len(filtered_data['Pathogenicity'].unique()) > 1:
-                        fig = px.box(filtered_data, x='Pathogenicity', y=score_col, 
-                                   color='Pathogenicity',
-                                   title=f"{score_col} by Pathogenicity Classification")
-                        fig.update_layout(xaxis_title="Pathogenicity", yaxis_title=score_col)
-                        st.plotly_chart(fig, use_container_width=True)
+                    # Create three columns for different visualizations
+                    viz_col1, viz_col2 = st.columns(2)
                     
-                    # Histogram
-                    fig = px.histogram(filtered_data, x=score_col, nbins=20,
-                                     title=f"{score_col} Distribution")
-                    fig.update_layout(xaxis_title=score_col, yaxis_title="Count")
-                    st.plotly_chart(fig, use_container_width=True)
+                    with viz_col1:
+                        # Box plot by pathogenicity
+                        if len(filtered_data['Pathogenicity'].unique()) > 1:
+                            fig = px.box(filtered_data, x='Pathogenicity', y=score_col, 
+                                       color='Pathogenicity',
+                                       title=f"{score_col} by Pathogenicity Classification")
+                            fig.update_layout(xaxis_title="Pathogenicity", yaxis_title=score_col, showlegend=False)
+                            st.plotly_chart(fig, use_container_width=True)
+                    
+                    with viz_col2:
+                        # Histogram with conservation thresholds
+                        fig = px.histogram(filtered_data, x=score_col, nbins=20,
+                                         title=f"{score_col} Distribution")
+                        
+                        # Add conservation threshold lines
+                        if 'phylop' in score_col.lower():
+                            fig.add_vline(x=2.0, line_dash="dash", line_color="red", 
+                                        annotation_text="High Conservation (2.0)")
+                            fig.add_vline(x=0.5, line_dash="dash", line_color="orange", 
+                                        annotation_text="Moderate (0.5)")
+                        elif 'gerp' in score_col.lower():
+                            fig.add_vline(x=4.0, line_dash="dash", line_color="red", 
+                                        annotation_text="High Constraint (4.0)")
+                            fig.add_vline(x=2.0, line_dash="dash", line_color="orange", 
+                                        annotation_text="Moderate (2.0)")
+                        elif 'phastcons' in score_col.lower():
+                            fig.add_vline(x=0.8, line_dash="dash", line_color="red", 
+                                        annotation_text="High Conservation (0.8)")
+                            fig.add_vline(x=0.5, line_dash="dash", line_color="orange", 
+                                        annotation_text="Moderate (0.5)")
+                        
+                        fig.update_layout(xaxis_title=score_col, yaxis_title="Count")
+                        st.plotly_chart(fig, use_container_width=True)
                 
                 # Gene-level conservation analysis
                 if len(selected_genes) > 1 or not selected_genes:
@@ -2483,23 +3218,194 @@ def run_variant_analysis():
                         fig.update_layout(xaxis_title="Gene", yaxis_title=score_col)
                         st.plotly_chart(fig, use_container_width=True)
                 
-                # Summary statistics
+                # Summary statistics with interpretation
                 st.subheader("📊 Conservation Summary Statistics")
                 summary_stats = filtered_data[available_conservation_cols].describe().round(3)
                 st.dataframe(summary_stats, use_container_width=True)
+                
+                # Conservation interpretation guide
+                with st.expander("📖 Conservation Score Interpretation Guide", expanded=False):
+                    st.markdown("""
+                    **PhyloP Scores:**
+                    - **> 2.0**: Strong evolutionary conservation (supports pathogenicity)
+                    - **0.5 - 2.0**: Moderate conservation 
+                    - **< 0.0**: Accelerated evolution (supports benign)
+                    
+                    **GERP++ Scores:**
+                    - **> 4.0**: Strong evolutionary constraint (supports pathogenicity)
+                    - **2.0 - 4.0**: Moderate constraint
+                    - **< 0.0**: Accelerated evolution (supports benign)
+                    
+                    **phastCons Scores:**
+                    - **> 0.8**: High conservation probability (supports pathogenicity)
+                    - **0.5 - 0.8**: Moderate conservation
+                    - **< 0.2**: Low conservation probability (supports benign)
+                    
+                    **ACMG Guidelines:**
+                    - **PP3**: Multiple computational evidence supporting deleterious effect
+                    - **BP4**: Multiple computational evidence suggesting no impact
+                    """)
             
             else:
                 st.warning("No conservation score columns found in the data.")
         
-        # Export data
-        st.subheader("💾 Export Data")
-        csv_data = filtered_data.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Filtered Data as CSV",
-            data=csv_data,
-            file_name=f"variant_conservation_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        # Export data with enhanced options
+        st.subheader("💾 Export Enhanced Analysis Results")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Basic CSV export
+            csv_data = filtered_data.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Basic Data (CSV)",
+                data=csv_data,
+                file_name=f"variant_conservation_basic_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+        
+        with col2:
+            # Enhanced analysis export (if available)
+            if 'conservation_results' in locals() and conservation_results:
+                try:
+                    # Create comprehensive report DataFrame
+                    export_data = []
+                    for i, result in enumerate(conservation_results):
+                        row_data = {
+                            'Variant_ID': result.get('variant_id', f'variant_{i}'),
+                            'Chromosome': result.get('chromosome', ''),
+                            'Position': result.get('position', ''),
+                            'Ref_Allele': result.get('ref', ''),
+                            'Alt_Allele': ','.join(result.get('alt', [])) if isinstance(result.get('alt'), list) else result.get('alt', ''),
+                            'Conservation_Available': result.get('conservation_available', False)
+                        }
+                        
+                        # Add consensus conservation data
+                        consensus_data = result.get('consensus_conservation', {})
+                        if consensus_data:
+                            row_data.update({
+                                'Consensus_Score': consensus_data.get('consensus_score', ''),
+                                'Confidence_Level': consensus_data.get('confidence_level', ''),
+                                'Score_Agreement': consensus_data.get('score_agreement', ''),
+                                'Conservation_Interpretation': consensus_data.get('interpretation', '')
+                            })
+                        
+                        # Add ACMG interpretation
+                        enhanced_acmg = result.get('enhanced_acmg', {})
+                        basic_acmg = result.get('acmg_interpretation', {})
+                        
+                        if enhanced_acmg:
+                            row_data.update({
+                                'ACMG_Criterion': enhanced_acmg.get('primary_criterion', ''),
+                                'Evidence_Strength': enhanced_acmg.get('evidence_strength', ''),
+                                'ACMG_Confidence': enhanced_acmg.get('confidence', ''),
+                                'Supporting_Details': '; '.join(enhanced_acmg.get('supporting_details', [])),
+                                'Recommendations': '; '.join(enhanced_acmg.get('recommendations', []))
+                            })
+                        elif basic_acmg:
+                            row_data.update({
+                                'ACMG_Criterion': ','.join(basic_acmg.get('acmg_criteria', [])),
+                                'Evidence_Strength': basic_acmg.get('evidence_strength', ''),
+                                'Conservation_Level': basic_acmg.get('conservation_level', '')
+                            })
+                        
+                        # Add individual conservation scores
+                        conservation_scores = result.get('conservation_scores', {})
+                        for score_name, score_data in conservation_scores.items():
+                            if isinstance(score_data, dict) and 'mean' in score_data:
+                                row_data[f'{score_name}_mean'] = score_data['mean']
+                                row_data[f'{score_name}_std'] = score_data.get('std', '')
+                        
+                        export_data.append(row_data)
+                    
+                    # Create DataFrame and export
+                    comprehensive_df = pd.DataFrame(export_data)
+                    comprehensive_csv = comprehensive_df.to_csv(index=False)
+                    
+                    st.download_button(
+                        label="📊 Download Comprehensive Analysis (CSV)",
+                        data=comprehensive_csv,
+                        file_name=f"variant_conservation_comprehensive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
+                    
+                except Exception as e:
+                    st.warning(f"Enhanced export not available: {e}")
+        
+        # Clinical report option
+        if 'conservation_results' in locals() and conservation_results:
+            with st.expander("📋 Generate Clinical Report", expanded=False):
+                st.markdown("### Clinical Conservation Analysis Report")
+                
+                # Report metadata
+                report_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                total_variants = len(conservation_results)
+                analyzed_variants = sum(1 for r in conservation_results if r.get('conservation_available'))
+                
+                clinical_report = f"""
+# Variant Conservation Analysis Report
+
+**Generated:** {report_date}
+**Total Variants:** {total_variants}
+**Successfully Analyzed:** {analyzed_variants} ({analyzed_variants/total_variants*100:.1f}%)
+
+## Executive Summary
+
+This report provides conservation analysis for {total_variants} variants using multiple computational prediction algorithms including phyloP, phastCons, and GERP++ scores.
+
+### ACMG Interpretation Summary
+- **PP3 (Supporting Pathogenic):** {acmg_summary.get('PP3', 0)} variants
+- **PP3 Weak (Moderate Evidence):** {acmg_summary.get('PP3_weak', 0)} variants  
+- **BP4 (Supporting Benign):** {acmg_summary.get('BP4', 0)} variants
+- **Insufficient Evidence:** {acmg_summary.get('insufficient', 0)} variants
+
+### Key Findings
+"""
+                
+                if consensus_scores:
+                    avg_consensus = np.mean(consensus_scores)
+                    high_conservation = sum(1 for s in consensus_scores if s > 0.8)
+                    clinical_report += f"""
+- **Average Consensus Conservation Score:** {avg_consensus:.3f}
+- **Highly Conserved Variants (>0.8):** {high_conservation} 
+- **High Confidence Analyses:** {high_confidence_variants}
+"""
+                
+                clinical_report += """
+
+## Methodology
+
+Conservation scores were analyzed using:
+1. **phyloP:** Evolutionary conservation based on phylogenetic p-values
+2. **phastCons:** Hidden Markov Model-based conservation probability  
+3. **GERP++:** Genomic Evolutionary Rate Profiling
+4. **Consensus Scoring:** Weighted combination of multiple metrics
+
+## ACMG Guidelines Applied
+
+- **PP3:** Multiple computational evidence supporting deleterious effect
+- **BP4:** Multiple computational evidence suggesting no impact
+- Evidence strength determined by score agreement and confidence levels
+
+## Limitations
+
+- Conservation analysis is one component of variant interpretation
+- Should be combined with other ACMG criteria for clinical decisions
+- Scores may not reflect functional impact in all biological contexts
+
+---
+*Report generated by TaxoConserv Variant Analysis Module*
+"""
+                
+                st.markdown(clinical_report)
+                
+                # Export clinical report
+                st.download_button(
+                    label="📄 Download Clinical Report (Markdown)",
+                    data=clinical_report,
+                    file_name=f"clinical_conservation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                    mime="text/markdown"
+                )
     
     # Handle VCF file upload (existing code)
     elif vcf_file is not None:

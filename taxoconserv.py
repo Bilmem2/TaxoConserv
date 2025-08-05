@@ -35,8 +35,8 @@ import time
 from datetime import datetime
 
 # Version information (Semantic Versioning)
-__version__ = "1.0.0"
-__version_info__ = (1, 0, 0)
+__version__ = "2.1.0"
+__version_info__ = (2, 1, 0)
 __author__ = "Can Sevilmiş"
 __email__ = ""
 __license__ = "APACHE 2.0"
