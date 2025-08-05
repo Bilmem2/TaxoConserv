@@ -3379,16 +3379,7 @@ def run_variant_analysis():
         # Clinical report option
         if 'conservation_results' in locals() and conservation_results:
             with st.expander("📋 Generate Clinical Report", expanded=False):
-                st.markdown("### 🏥 Clinical Conservation Analysis Report Generator")
-                
-                # Report options
-                col1, col2 = st.columns(2)
-                with col1:
-                    include_individual_variants = st.checkbox("Include Individual Variant Details", value=True)
-                    include_methodology = st.checkbox("Include Detailed Methodology", value=True)
-                with col2:
-                    include_quality_metrics = st.checkbox("Include Quality Metrics", value=True)
-                    include_recommendations = st.checkbox("Include Clinical Recommendations", value=True)
+                st.markdown("### Conservation Analysis Report")
                 
                 # Report metadata
                 report_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -3396,379 +3387,156 @@ def run_variant_analysis():
                 analyzed_variants = sum(1 for r in conservation_results if r.get('conservation_available'))
                 coverage_percentage = analyzed_variants/total_variants*100 if total_variants > 0 else 0
                 
-                # Calculate additional statistics
-                gene_distribution = {}
-                pathogenicity_breakdown = {}
-                conservation_distribution = {'high': 0, 'moderate': 0, 'low': 0, 'insufficient': 0}
-                
-                for result in conservation_results:
-                    # Extract gene information if available
-                    variant_id = result.get('variant_id', '')
-                    chrom = result.get('chromosome', 'Unknown')
-                    
-                    # Track pathogenicity if available in filtered_data
-                    matching_row = filtered_data[
-                        (filtered_data['CHROM'] == chrom) & 
-                        (filtered_data['POS'] == result.get('position', 0))
-                    ]
-                    
-                    if not matching_row.empty:
-                        gene = matching_row.iloc[0].get('GENE', 'Unknown')
-                        pathogenicity = matching_row.iloc[0].get('Pathogenicity', 'Unknown')
-                        
-                        gene_distribution[gene] = gene_distribution.get(gene, 0) + 1
-                        pathogenicity_breakdown[pathogenicity] = pathogenicity_breakdown.get(pathogenicity, 0) + 1
-                    
-                    # Categorize conservation level
-                    if result.get('conservation_available'):
-                        consensus_data = result.get('consensus_conservation', {})
-                        if consensus_data.get('consensus_score'):
-                            score = consensus_data['consensus_score']
-                            if score > 0.8:
-                                conservation_distribution['high'] += 1
-                            elif score > 0.6:
-                                conservation_distribution['moderate'] += 1
-                            elif score > 0.3:
-                                conservation_distribution['low'] += 1
-                            else:
-                                conservation_distribution['insufficient'] += 1
-                        else:
-                            conservation_distribution['insufficient'] += 1
-                    else:
-                        conservation_distribution['insufficient'] += 1
-                
-                # Generate enhanced clinical report
-                clinical_report = f"""# 🧬 Clinical Variant Conservation Analysis Report
+                # Generate simple clinical report
+                clinical_report = f"""# Variant Conservation Analysis Report
 
----
+**Generated:** {report_date}  
+**Total Variants:** {total_variants}  
+**Successfully Analyzed:** {analyzed_variants} ({coverage_percentage:.1f}%)
 
-## 📋 Report Information
+## Summary
 
-| **Field** | **Value** |
-|-----------|-----------|
-| **Generated** | {report_date} |
-| **Report ID** | TCR-{datetime.now().strftime('%Y%m%d-%H%M%S')} |
-| **Software** | TaxoConserv v2.1.0 |
-| **Analysis Type** | Multi-metric Conservation Analysis |
-| **Total Variants** | {total_variants} |
-| **Successfully Analyzed** | {analyzed_variants} ({coverage_percentage:.1f}%) |
+This report provides conservation analysis for {total_variants} variants using phyloP, phastCons, and GERP++ scores.
 
----
+### ACMG Interpretation Summary
+- **PP3 (Supporting Pathogenic):** {acmg_summary.get('PP3', 0)} variants
+- **PP3 Weak (Moderate Evidence):** {acmg_summary.get('PP3_weak', 0)} variants  
+- **BP4 (Supporting Benign):** {acmg_summary.get('BP4', 0)} variants
+- **Insufficient Evidence:** {acmg_summary.get('insufficient', 0)} variants
 
-## 🎯 Executive Summary
-
-This comprehensive report presents conservation analysis results for **{total_variants} genetic variants** using state-of-the-art computational prediction algorithms. The analysis achieved **{coverage_percentage:.1f}% coverage** with high-confidence interpretations for clinical decision support.
-
-### 🔬 ACMG Clinical Interpretation Summary
-
-| **ACMG Criterion** | **Count** | **Percentage** | **Clinical Impact** |
-|-------------------|-----------|----------------|-------------------|
-| 🔴 **PP3 (Strong Supporting Pathogenic)** | {acmg_summary.get('PP3', 0)} | {acmg_summary.get('PP3', 0)/total_variants*100:.1f}% | High confidence pathogenicity support |
-| 🟡 **PP3 Weak (Moderate Evidence)** | {acmg_summary.get('PP3_weak', 0)} | {acmg_summary.get('PP3_weak', 0)/total_variants*100:.1f}% | Moderate pathogenicity support |
-| 🟢 **BP4 (Supporting Benign)** | {acmg_summary.get('BP4', 0)} | {acmg_summary.get('BP4', 0)/total_variants*100:.1f}% | Conservation supports benign classification |
-| ⚪ **Insufficient Evidence** | {acmg_summary.get('insufficient', 0)} | {acmg_summary.get('insufficient', 0)/total_variants*100:.1f}% | Requires additional evidence |
-
-### 📊 Conservation Distribution Analysis
-
-| **Conservation Level** | **Count** | **Percentage** | **Score Range** |
-|----------------------|-----------|----------------|-----------------|
-| 🔴 **High Conservation** | {conservation_distribution['high']} | {conservation_distribution['high']/total_variants*100:.1f}% | > 0.8 |
-| 🟡 **Moderate Conservation** | {conservation_distribution['moderate']} | {conservation_distribution['moderate']/total_variants*100:.1f}% | 0.6 - 0.8 |
-| 🟢 **Low Conservation** | {conservation_distribution['low']} | {conservation_distribution['low']/total_variants*100:.1f}% | 0.3 - 0.6 |
-| ⚪ **Insufficient Data** | {conservation_distribution['insufficient']} | {conservation_distribution['insufficient']/total_variants*100:.1f}% | < 0.3 or unavailable |
+### Key Findings
 """
 
+                
                 # Add consensus scoring results if available
                 if consensus_scores:
                     avg_consensus = np.mean(consensus_scores)
-                    median_consensus = np.median(consensus_scores)
-                    std_consensus = np.std(consensus_scores)
                     high_conservation = sum(1 for s in consensus_scores if s > 0.8)
-                    moderate_conservation = sum(1 for s in consensus_scores if 0.6 <= s <= 0.8)
-                    
                     clinical_report += f"""
-
-### 🎯 Consensus Conservation Analysis
-
-| **Metric** | **Value** | **Interpretation** |
-|------------|-----------|-------------------|
-| **Average Consensus Score** | {avg_consensus:.3f} ± {std_consensus:.3f} | {"High" if avg_consensus > 0.7 else "Moderate" if avg_consensus > 0.5 else "Low"} overall conservation |
-| **Median Consensus Score** | {median_consensus:.3f} | Typical variant conservation level |
-| **High Confidence Variants** | {high_confidence_variants} ({high_confidence_variants/len(consensus_scores)*100:.1f}%) | Reliable clinical interpretations |
-| **Highly Conserved Variants** | {high_conservation} ({high_conservation/len(consensus_scores)*100:.1f}%) | Strong pathogenicity support (>0.8) |
-| **Moderately Conserved** | {moderate_conservation} ({moderate_conservation/len(consensus_scores)*100:.1f}%) | Moderate pathogenicity support (0.6-0.8) |
+- **Average Consensus Conservation Score:** {avg_consensus:.3f}
+- **Highly Conserved Variants (>0.8):** {high_conservation} 
+- **High Confidence Analyses:** {high_confidence_variants}
 """
 
-                # Add gene distribution if available
-                if gene_distribution:
-                    top_genes = sorted(gene_distribution.items(), key=lambda x: x[1], reverse=True)[:10]
-                    clinical_report += f"""
+                clinical_report += """
 
-### 🧬 Gene Distribution Analysis
+## Methodology
 
-| **Rank** | **Gene** | **Variant Count** | **Percentage** |
-|----------|----------|-------------------|----------------|
+Conservation scores were analyzed using:
+1. **phyloP:** Evolutionary conservation based on phylogenetic p-values
+2. **phastCons:** Hidden Markov Model-based conservation probability  
+3. **GERP++:** Genomic Evolutionary Rate Profiling
+4. **Consensus Scoring:** Weighted combination of multiple metrics
+
+## ACMG Guidelines Applied
+
+- **PP3:** Multiple computational evidence supporting deleterious effect
+- **BP4:** Multiple computational evidence suggesting no impact
+- Evidence strength determined by score agreement and confidence levels
+
+## Limitations
+
+- Conservation analysis is one component of variant interpretation
+- Should be combined with other ACMG criteria for clinical decisions
+- Scores may not reflect functional impact in all biological contexts
+
+---
+*Report generated by TaxoConserv v2.1.0*
 """
-                    for i, (gene, count) in enumerate(top_genes, 1):
-                        percentage = count/total_variants*100
-                        clinical_report += f"| {i} | **{gene}** | {count} | {percentage:.1f}% |\n"
-
-                # Add pathogenicity breakdown if available
-                if pathogenicity_breakdown:
-                    clinical_report += f"""
-
-### 🔬 Pathogenicity Classification Breakdown
-
-| **Classification** | **Count** | **Percentage** |
-|-------------------|-----------|----------------|
-"""
-                    for path_class, count in sorted(pathogenicity_breakdown.items(), key=lambda x: x[1], reverse=True):
-                        percentage = count/total_variants*100
-                        clinical_report += f"| **{path_class}** | {count} | {percentage:.1f}% |\n"
-
-                # Add methodology section if requested
-                if include_methodology:
-                    clinical_report += f"""
-
----
-
-## 🔬 Methodology & Technical Details
-
-### Conservation Score Algorithms
-
-#### 1. **phyloP (Phylogenetic P-values)**
-- **Purpose:** Measures evolutionary conservation based on phylogenetic analysis
-- **Scale:** Continuous scale (typically -3 to +7)
-- **Interpretation:** 
-  - Values > 2.0: Strong evolutionary conservation
-  - Values 0.5-2.0: Moderate conservation
-  - Values < 0.0: Accelerated evolution
-- **Weight in Consensus:** 35%
-
-#### 2. **phastCons (Hidden Markov Model)**
-- **Purpose:** Probability that a nucleotide belongs to a conserved element
-- **Scale:** 0.0 to 1.0 (probability)
-- **Interpretation:**
-  - Values > 0.8: High conservation probability
-  - Values 0.5-0.8: Moderate conservation
-  - Values < 0.2: Low conservation probability
-- **Weight in Consensus:** 30%
-
-#### 3. **GERP++ (Genomic Evolutionary Rate Profiling)**
-- **Purpose:** Measures evolutionary constraint at individual positions
-- **Scale:** Continuous scale (typically -8 to +10)
-- **Interpretation:**
-  - Values > 4.0: Strong evolutionary constraint
-  - Values 2.0-4.0: Moderate constraint
-  - Values < 0.0: Accelerated evolution
-- **Weight in Consensus:** 25%
-
-### Consensus Scoring Framework
-
-The consensus conservation score is calculated using a weighted average:
-
-```
-Consensus Score = (phyloP × 0.35) + (phastCons × 0.30) + (GERP × 0.25) + (Additional × 0.10)
-```
-
-All scores are normalized to a 0-1 scale before combination.
-
-### ACMG Guidelines Implementation
-
-#### PP3 Criterion Application
-- **Strong (PP3):** Consensus score > 0.8 with high confidence
-- **Moderate (PP3_weak):** Consensus score 0.6-0.8 with moderate confidence
-- Applied when multiple computational tools agree on deleterious effect
-
-#### BP4 Criterion Application
-- **Supporting Benign:** Consensus score < 0.3 across multiple tools
-- Applied when computational evidence suggests no functional impact
-
-### Quality Control Measures
-
-1. **Score Agreement Analysis:** Cross-validation between different algorithms
-2. **Confidence Intervals:** Statistical reliability assessment
-3. **Position Matching:** Precise genomic coordinate alignment
-4. **Data Completeness:** Coverage and missing data evaluation
-"""
-
-                # Add quality metrics if requested
-                if include_quality_metrics:
-                    clinical_report += f"""
-
----
-
-## 📊 Quality Assessment & Reliability Metrics
-
-### Analysis Coverage
-- **Total Positions Queried:** {total_variants}
-- **Successfully Analyzed:** {analyzed_variants} ({coverage_percentage:.1f}%)
-- **Missing Conservation Data:** {total_variants - analyzed_variants} ({100-coverage_percentage:.1f}%)
-
-### Score Reliability
-- **High Confidence Results:** {high_confidence_variants} variants
-- **Multi-tool Agreement:** {sum(1 for r in conservation_results if r.get('conservation_available') and len(r.get('conservation_scores', {})) >= 2)} variants
-- **Consensus Score Coverage:** {len(consensus_scores) if consensus_scores else 0} variants
-
-### Data Quality Indicators
-- ✅ **Algorithm Diversity:** Multiple independent conservation methods
-- ✅ **Statistical Validation:** Confidence interval calculations
-- ✅ **Cross-platform Compatibility:** Standardized score normalization
-- ✅ **Clinical Standards:** ACMG guideline compliance
-"""
-
-                # Add individual variant details if requested
-                if include_individual_variants and len(conservation_results) <= 20:  # Limit for readability
-                    clinical_report += f"""
-
----
-
-## 📋 Individual Variant Analysis
-
-| **Variant ID** | **Position** | **ACMG** | **Consensus Score** | **Confidence** | **Interpretation** |
-|----------------|--------------|----------|-------------------|----------------|-------------------|
-"""
-                    for result in conservation_results:
-                        variant_id = result.get('variant_id', 'N/A')
-                        position = f"{result.get('chromosome', 'N/A')}:{result.get('position', 'N/A')}"
-                        
-                        # Get ACMG interpretation
-                        enhanced_acmg = result.get('enhanced_acmg', {})
-                        basic_acmg = result.get('acmg_interpretation', {})
-                        
-                        if enhanced_acmg:
-                            acmg_criterion = enhanced_acmg.get('primary_criterion', 'N/A')
-                        elif basic_acmg:
-                            acmg_criteria = basic_acmg.get('acmg_criteria', [])
-                            acmg_criterion = ', '.join(acmg_criteria) if acmg_criteria else 'N/A'
-                        else:
-                            acmg_criterion = 'N/A'
-                        
-                        # Get consensus data
-                        consensus_data = result.get('consensus_conservation', {})
-                        consensus_score = consensus_data.get('consensus_score', 'N/A')
-                        confidence = consensus_data.get('confidence_level', 'N/A')
-                        interpretation = consensus_data.get('interpretation', 'N/A')
-                        
-                        if isinstance(consensus_score, float):
-                            consensus_score = f"{consensus_score:.3f}"
-                        
-                        clinical_report += f"| {variant_id} | {position} | {acmg_criterion} | {consensus_score} | {confidence} | {interpretation} |\n"
-
-                # Add clinical recommendations if requested
-                if include_recommendations:
-                    clinical_report += f"""
-
----
-
-## 🏥 Clinical Recommendations
-
-### Primary Recommendations
-
-1. **High Conservation Variants (PP3 Strong):** {acmg_summary.get('PP3', 0)} variants
-   - ✅ **Action:** Consider as supporting evidence for pathogenicity
-   - ⚠️  **Note:** Combine with other ACMG criteria for final classification
-   - 📋 **Follow-up:** Functional studies may provide additional validation
-
-2. **Moderate Conservation (PP3 Weak):** {acmg_summary.get('PP3_weak', 0)} variants
-   - 📊 **Action:** Use as moderate supporting evidence
-   - 🔍 **Note:** Consider population frequency and clinical context
-   - 📋 **Follow-up:** Additional computational or experimental evidence recommended
-
-3. **Low Conservation (BP4):** {acmg_summary.get('BP4', 0)} variants
-   - ✅ **Action:** Supporting evidence for benign classification
-   - ℹ️  **Note:** Conservation alone insufficient for benign classification
-   - 📋 **Follow-up:** Consider other benign evidence criteria
-
-### Secondary Considerations
-
-- **Insufficient Evidence:** {acmg_summary.get('insufficient', 0)} variants require additional analysis
-- **Novel Variants:** Consider experimental validation for high-impact positions
-- **Population Context:** Integrate with allele frequency data when available
-
-### Laboratory Workflow Integration
-
-1. **Tier 1 Analysis:** Focus on high conservation variants (PP3 strong)
-2. **Tier 2 Review:** Evaluate moderate conservation variants in clinical context
-3. **Tier 3 Assessment:** Consider low conservation as supporting benign evidence
-
----
-
-## ⚠️ Important Disclaimers & Limitations
-
-### Clinical Use Limitations
-- Conservation analysis is **ONE COMPONENT** of variant interpretation
-- Must be combined with other ACMG/AMP criteria for clinical classification
-- Not sufficient alone for pathogenicity or benignity determination
-- Requires clinical correlation and expert interpretation
-
-### Technical Limitations
-- Conservation scores may not reflect functional impact in all biological contexts
-- Splice sites, regulatory regions may have different conservation patterns
-- Population-specific variations not fully captured
-- Algorithm predictions require experimental validation
-
-### Regulatory Compliance
-- This analysis is for **research and educational purposes**
-- Not validated for clinical diagnostic use
-- Requires appropriate clinical oversight and validation
-- Compliance with local regulations and guidelines essential
-
----
-
-## 📚 References & Standards
-
-1. **ACMG/AMP Guidelines:** Richards et al. (2015) Standards and guidelines for the interpretation of sequence variants
-2. **Conservation Algorithms:** 
-   - phyloP: Pollard et al. (2010) Detection of nonneutral substitution rates
-   - phastCons: Siepel et al. (2005) Evolutionarily conserved elements
-   - GERP++: Davydov et al. (2010) Identifying a high fraction of the human genome
-3. **Clinical Implementation:** ClinGen recommendations for computational evidence usage
-
----
-
-*Report generated by **TaxoConserv v2.1.0** Clinical Variant Conservation Analysis Platform*
-*Generated on {report_date} | Report ID: TCR-{datetime.now().strftime('%Y%m%d-%H%M%S')}*
-"""
-
+                
                 st.markdown(clinical_report)
                 
-                # Enhanced export options
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    # Markdown export
-                    st.download_button(
-                        label="📄 Download Report (Markdown)",
-                        data=clinical_report,
-                        file_name=f"clinical_conservation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                        mime="text/markdown"
+                # PDF Export only
+                try:
+                    # Create PDF from clinical report
+                    from reportlab.lib.pagesizes import letter, A4
+                    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+                    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                    from reportlab.lib.units import inch
+                    from reportlab.lib import colors
+                    from io import BytesIO
+                    
+                    buffer = BytesIO()
+                    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*inch, bottomMargin=1*inch)
+                    styles = getSampleStyleSheet()
+                    
+                    # Custom styles for the report
+                    title_style = ParagraphStyle(
+                        'CustomTitle',
+                        parent=styles['Heading1'],
+                        fontSize=16,
+                        spaceAfter=20,
+                        textColor=colors.darkblue
                     )
-                
-                with col2:
-                    # HTML export (convert markdown to basic HTML)
-                    html_report = clinical_report.replace('# ', '<h1>').replace('## ', '<h2>').replace('### ', '<h3>')
-                    html_report = html_report.replace('**', '<strong>').replace('**', '</strong>')
-                    html_report = f"<html><head><title>Conservation Analysis Report</title></head><body>{html_report}</body></html>"
+                    
+                    heading_style = ParagraphStyle(
+                        'CustomHeading',
+                        parent=styles['Heading2'],
+                        fontSize=14,
+                        spaceAfter=12,
+                        textColor=colors.darkgreen
+                    )
+                    
+                    # Build PDF content
+                    story = []
+                    
+                    # Parse clinical_report and add to PDF
+                    lines = clinical_report.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if line.startswith('# '):
+                            # Main title
+                            story.append(Paragraph(line[2:], title_style))
+                            story.append(Spacer(1, 12))
+                        elif line.startswith('## '):
+                            # Section heading
+                            story.append(Paragraph(line[3:], heading_style))
+                            story.append(Spacer(1, 8))
+                        elif line.startswith('**') and line.endswith('**'):
+                            # Bold text
+                            text = line[2:-2]
+                            story.append(Paragraph(f"<b>{text}</b>", styles['Normal']))
+                            story.append(Spacer(1, 6))
+                        elif line.startswith('- '):
+                            # Bullet point
+                            story.append(Paragraph(f"• {line[2:]}", styles['Normal']))
+                            story.append(Spacer(1, 4))
+                        elif line and not line.startswith('---'):
+                            # Regular text
+                            story.append(Paragraph(line, styles['Normal']))
+                            story.append(Spacer(1, 6))
+                        elif line.startswith('---'):
+                            # Add line separator
+                            story.append(Spacer(1, 12))
+                    
+                    # Build PDF
+                    doc.build(story)
+                    buffer.seek(0)
                     
                     st.download_button(
-                        label="🌐 Download Report (HTML)",
-                        data=html_report,
-                        file_name=f"clinical_conservation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                        mime="text/html"
+                        label="📄 Download Report (PDF)",
+                        data=buffer.getvalue(),
+                        file_name=f"conservation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf"
                     )
-                
-                with col3:
-                    # PDF-ready text export
-                    pdf_ready = clinical_report.replace('#', '').replace('*', '').replace('|', ' | ')
+                    
+                except ImportError:
+                    st.warning("⚠️ PDF generation requires reportlab package. Installing...")
+                    try:
+                        import subprocess
+                        subprocess.check_call(["pip", "install", "reportlab"])
+                        st.success("✅ reportlab installed. Please refresh the page to generate PDF.")
+                    except:
+                        st.error("❌ Could not install reportlab. Please install manually: pip install reportlab")
+                except Exception as e:
+                    st.error(f"❌ PDF generation failed: {e}")
+                    # Fallback to simple text export
                     st.download_button(
-                        label="📑 Download Report (PDF-ready)",
-                        data=pdf_ready,
-                        file_name=f"clinical_conservation_report_pdf_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                        label="📑 Download Report (TXT)",
+                        data=clinical_report.replace('#', '').replace('*', ''),
+                        file_name=f"conservation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
                         mime="text/plain"
-                )
-    
-    # Handle VCF file upload (existing code)
+                    )    # Handle VCF file upload (existing code)
     elif vcf_file is not None:
         try:
             # Import variant analysis module

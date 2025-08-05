@@ -37,6 +37,7 @@ flake8>=5.0.0
 kaleido>=0.2.1       # For static image export from plotly
 openpyxl>=3.1.0      # For Excel file support
 xlsxwriter>=3.1.0    # For advanced Excel formatting
+reportlab>=3.6.0     # For PDF report generation
 
 # Type checking (development)
 mypy>=1.5.0
